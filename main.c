@@ -6,6 +6,9 @@
 
 #include "create_user.c"
 
+// Imports from the .proto file
+#include "sistos.pb-c.h"
+
 
 #define BUFF_SIZE 100
 #define USERNAME_SIZE 100
@@ -21,7 +24,6 @@ int main(int argc, char *argv[]){
 
         char buffer[BUFF_SIZE];
         char recipient[USERNAME_SIZE];
-
 
         int option = 0;
         int option2 = 0;
