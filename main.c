@@ -38,10 +38,9 @@ void delete_lb(char *arr, int length)
 
 int main(int argc, char *argv[]){
 
-    char *client_name = argv[1];
-    char *username = argv[2];
-    char *server_ip = argv[3];
-    int port = atoi(argv[4]);
+    char *username = argv[1];
+    char *server_ip = argv[2];
+    int port = atoi(argv[3]);
 
 
     // new user
@@ -69,8 +68,8 @@ int main(int argc, char *argv[]){
 
     // assign IP, PORT
     servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    servaddr.sin_port = htons(PORT);
+    servaddr.sin_addr.s_addr = inet_addr(server_ip);
+    servaddr.sin_port = htons(port);
 
     // connect the client socket to server socket
     if (connect(sockfd, (SA*)&servaddr, sizeof(servaddr))
@@ -114,7 +113,7 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     }
 
-    printf("Mensaje enviado al servidor con éxito.\n");
+    printf("User created succesfully.\n");
 
 
     char buffer[BUFF_SIZE];
@@ -174,6 +173,7 @@ int main(int argc, char *argv[]){
                 } while(option2 != 4);
                 break;
             case 4: // List Connected Users
+
                 break;
             case 5: // User Info
                 printf("Insert the username to get the information: ");

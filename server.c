@@ -7,9 +7,14 @@
 #include <sys/types.h>
 #include <unistd.h> // read(), write(), close()
 #include <arpa/inet.h> // inet_addr()
+#include <pthread.h>
+
+
 #include "sistos.pb-c.h" // import the generated file from the .proto
 
 #define BUFFER_SIZE 250
+#define USERNAME_SIZE 32
+#define STATUS_SIZE 32
 #define SA struct sockaddr
 
 #define MAX_CLIENTS 3
@@ -20,55 +25,45 @@ int clients_connected = 0;
 struct sockaddr_in servaddr, cli;
 
 //Client Structure
-typedef struct
-{
+typedef struct {
     struct sockaddr_in address;
     int sockfd;
+    pthread_t thread_id;
     int client_id;
     clock_t last_connection;
-    int status_changed_last_connection;
-    char status[32];
-    char name[32];
-} client_str;
-
-// Function designed for chat between client and server.
-//void func(int connfd)
-//{
-//    char buff[MAX];
-//    int n;
-//    // infinite loop for chat
-//    for (;;) {
-//        bzero(buff, MAX);
-//
-//        // read the message from client and copy it in buffer
-//        read(connfd, buff, sizeof(buff));
-//        // print buffer which contains the client contents
-//        printf("From client: %s\t To client : ", buff);
-//        bzero(buff, MAX);
-//        n = 0;
-//        // copy server message in the buffer
-//        while ((buff[n++] = getchar()) != '\n')
-//            ;
-//
-//        // and send that buffer to client
-//        write(connfd, buff, sizeof(buff));
-//
-//        // if msg contains "Exit" then server exit and chat ended.
-//        if (strncmp("exit", buff, 4) == 0) {
-//            printf("Server Exit...\n");
-//            break;
-//        }
-//    }
-//}
+    char status[STATUS_SIZE];
+    char username[USERNAME_SIZE];
+} client_struct;
 
 /*
- * Create a socket and listen for incoming connections
- * Reference: https://www.geeksforgeeks.org/tcp-server-client-implementation-in-c/
+ * Creates a new client_struct and returns a pointer to it
  */
-void create_socket(int port){
+client_struct *create_client_struct(struct sockaddr_in address, int sockfd, int client_id, clock_t last_connection, char *status, char *username){
+    client_struct *client = (client_struct *)malloc(sizeof(client_struct));
+    client->address = address;
+    client->sockfd = sockfd;
+    client->client_id = client_id;
+    client->last_connection = last_connection;
+    strcpy(client->status, status);
+    strcpy(client->username, username);
 
+    // Show the new client's information
+    printf("Client %d connected\n", clients_connected);
+    printf("Username: %s\n", client->username);
+    printf("ID: %d\n", client->client_id);
+    printf("IP: %s\n", inet_ntoa(address.sin_addr));
+    printf("Port: %d\n", ntohs(address.sin_port));
+    printf("Status: %s\n", client->status);
+    printf("Last Connection: %ld\n", client->last_connection);
+
+    return client;
 }
 
+void *handle_client(void *arg){
+    client_struct *client = (client_struct *)arg;
+    printf("Handling client %d\n", client->client_id);
+    return NULL;
+}
 
 int main(int argc, char *argv[]){
     if(argc < 2){
@@ -123,7 +118,6 @@ int main(int argc, char *argv[]){
         int len2 = sizeof(cli);
         // Listen for incoming connections
         connfd = accept(sockfd, (SA*)&cli, &len2);
-
         if (connfd < 0) {
             printf("Server accept failed...\n");
             exit(0);
@@ -137,6 +131,8 @@ int main(int argc, char *argv[]){
             printf("Server accepted the client...\n");
         }
 
+        // The user can now interact with the server
+
         // Declare a buffer to store the received data
         void *buf = malloc(BUFFER_SIZE);
         if (buf == NULL) {
@@ -144,14 +140,14 @@ int main(int argc, char *argv[]){
             exit(1);
         }
 
-// Receive the data from the client
+        // Receive the data from the client
         ssize_t len3 = recv(connfd, buf, BUFFER_SIZE, 0);
         if (len3 == -1) {
             perror("Receive failed");
             exit(EXIT_FAILURE);
         }
 
-// Unpack the received data
+        // Unpack the received data
         Chat__ClientPetition *clientPetition;
         clientPetition = chat__client_petition__unpack(NULL, len3, buf);
         if (clientPetition == NULL) {
@@ -159,18 +155,36 @@ int main(int argc, char *argv[]){
             exit(1);
         }
 
-// Print the unpacked data
-        printf("Received message from client: (USRNM)\t%s\n", clientPetition->registration->username);
-        printf("Received message from client: (IP)\t%s\n", clientPetition->registration->ip);
+        // The server has received the data and unpacked it
 
-// Free the unpacked message
+        // Create a client_struct to store the client's information
+        client_struct *client = create_client_struct(
+            cli,
+            connfd,
+            clients_connected,
+            clock(),
+            "Online",
+            clientPetition->registration->username
+        );
+
+        // Free the unpacked message
         chat__client_petition__free_unpacked(clientPetition, NULL);
 
-// Free the buffer
-        free(buf);
+        // Create a thread ot handle the client
+        pthread_t client_thread;
 
-        // After chatting close the socket
-        close(sockfd);
-        continue_running = 0;
+        // Add the thread id to the client_struct
+        client->thread_id = client_thread;
+
+
+//        pthread_create(&client_thread, NULL, handle_client, (void *)client);
+
+
+
+        // Free the buffer
+        free(buf);
     }
+    // Handle exit
+    close(sockfd);
+    return 0;
 }
