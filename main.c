@@ -99,6 +99,8 @@ int main(int argc, char *argv[]){
 
     //Pack protobuf petition
     len = chat__client_petition__get_packed_size(&clientPetition);
+    // len size
+    printf("len: %d\n", len);
     void *buf = malloc(len);
     if (buf == NULL) {
         // Manejo de error de memoria
