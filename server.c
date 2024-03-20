@@ -7,8 +7,26 @@
 #include <sys/types.h>
 #include <unistd.h> // read(), write(), close()
 #define MAX 80
-#define PORT 8080
 #define SA struct sockaddr
+
+#define MAX_CLIENTS 3
+int clients_connected = 0;
+
+#define CONNECTION_REQUEST_BEFORE_REFUSAL 5
+
+struct sockaddr_in servaddr, cli;
+
+//Client Structure
+typedef struct
+{
+    struct sockaddr_in address;
+    int sockfd;
+    int client_id;
+    clock_t last_connection;
+    int status_changed_last_connection;
+    char status[32];
+    char name[32];
+} client_str;
 
 // Function designed for chat between client and server.
 void func(int connfd)
@@ -40,9 +58,24 @@ void func(int connfd)
     }
 }
 
-// Driver function
-int main()
-{
+/*
+ * Create a socket and listen for incoming connections
+ * Reference: https://www.geeksforgeeks.org/tcp-server-client-implementation-in-c/
+ */
+void create_socket(int port){
+
+}
+
+
+int main(int argc, char *argv[]){
+    if(argc < 2){
+        printf("Please provide a port number");
+        printf("Usage: %s <port>\n", argv[0]);
+        return -1;
+    }
+
+    int port = atoi(argv[1]);  // Convert the port number from string to integer
+
     int sockfd, connfd, len;
     struct sockaddr_in servaddr, cli;
 
@@ -59,7 +92,7 @@ int main()
     // assign IP, PORT
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(PORT);
+    servaddr.sin_port = htons(port);
 
     // Binding newly created socket to given IP and verification
     if ((bind(sockfd, (SA*)&servaddr, sizeof(servaddr))) != 0) {
