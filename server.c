@@ -116,7 +116,8 @@ int main(int argc, char *argv[]){
 
     // From now, the socket has been set up and is listening for incoming connections
 
-    while(1){
+    int continue_running = 1;
+    while(continue_running){
         int connfd;
         struct sockaddr_in cli;
         int len2 = sizeof(cli);
@@ -159,8 +160,8 @@ int main(int argc, char *argv[]){
         }
 
 // Print the unpacked data
-        printf("Received message from client: %s\n", clientPetition->registration->username);
-        printf("Received message from client: %s\n", clientPetition->registration->ip);
+        printf("Received message from client: (USRNM)\t%s\n", clientPetition->registration->username);
+        printf("Received message from client: (IP)\t%s\n", clientPetition->registration->ip);
 
 // Free the unpacked message
         chat__client_petition__free_unpacked(clientPetition, NULL);
@@ -168,9 +169,8 @@ int main(int argc, char *argv[]){
 // Free the buffer
         free(buf);
 
-
-
         // After chatting close the socket
         close(sockfd);
+        continue_running = 0;
     }
 }

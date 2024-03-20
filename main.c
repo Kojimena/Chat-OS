@@ -45,8 +45,6 @@ int main(int argc, char *argv[]){
 
 
     // new user
-    printf("type your username: ");
-    fgets(username, USERNAME_SIZE, stdin);
     delete_lb(username, strlen(username));
 
     if (strlen(username) > USERNAME_SIZE || strlen(username) < 1){
@@ -90,6 +88,9 @@ int main(int argc, char *argv[]){
 
     unsigned len;
 
+    printf("Registering user: %s\n", username);
+    printf("Server IP: %s\n", server_ip);
+
     userRegistration.username = username;
     userRegistration.ip = server_ip;
 
@@ -99,8 +100,6 @@ int main(int argc, char *argv[]){
 
     //Pack protobuf petition
     len = chat__client_petition__get_packed_size(&clientPetition);
-    // len size
-    printf("len: %d\n", len);
     void *buf = malloc(len);
     if (buf == NULL) {
         // Manejo de error de memoria
