@@ -88,7 +88,7 @@ void broadcast(char *message, int current_client){
 				Chat__MessageCommunication msg = CHAT__MESSAGE_COMMUNICATION__INIT;
 				msg.message = message;
 				msg.recipient = "everyone";
-				msg.sender = clients[current_client]->username;
+				msg.sender = clients[current_client]->username; //sender
 				srv_res.messagecommunication = &msg;
 				len = chat__server_response__get_packed_size(&srv_res);
 				buf = malloc(len);
@@ -98,6 +98,8 @@ void broadcast(char *message, int current_client){
 					perror("Failed to send message to client");
                     break;
 				}
+                printf("Sent message to client %d\n", clients[i]->client_id);
+
 				free(buf);
 			}
 		}
@@ -134,6 +136,14 @@ void *handle_client(void *arg){
             return NULL;
         }
 
+        //manejar el menu de opciones
+        Chat__ClientPetition *clientPetition;
+        clientPetition = chat__client_petition__unpack(NULL, message_len, buffer);
+        if (clientPetition == NULL) {
+            fprintf(stderr, "Error unpacking incoming message.\n");
+            exit(1);
+        }
+
         printf("Received message length: %zd\n", message_len);
 
         printf("Buffer contents: ");
@@ -141,24 +151,29 @@ void *handle_client(void *arg){
             printf("%02x ", (unsigned char)buffer[i]);
         }
         printf("\n");
-
-        // Unpack the received message
-        Chat__ClientPetition *clientPetition;
-        clientPetition = chat__client_petition__unpack(NULL, message_len, buffer);
-
-        if (clientPetition == NULL) {
-            fprintf(stderr, "Error unpacking incoming message\n");
-            exit(1);
+        //switch para manejar las opciones
+        switch (clientPetition->option)
+        {
+        case 1:
+            //Enviar mensaje a todos
+            
+            break;
+        case 2:
+            //private message
+            break;
+        case 3:
+            //change status
+            break;
+        case 4:
+            // Show the received message
+            printf("Received message from client %d\n", client->client_id);
+            broadcast(clientPetition->messagecommunication->message, client->client_id);
+            printf("Message: %s\n", clientPetition->messagecommunication->message);
+            break;
+        default:
+            break;
         }
-
-        // Show the received message
-        printf("Received message from client %d\n", client->client_id);
-
-        // Broadcast the message to all clients
-        broadcast(buffer, client->client_id);
-
-        // Free the unpacked message
-        chat__client_petition__free_unpacked(clientPetition, NULL);
+        chat__client_petition__free_unpacked(clientPetition, NULL);   
 
     }
 }
