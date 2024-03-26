@@ -107,6 +107,40 @@ void broadcast(char *message, int current_client){
 	pthread_mutex_unlock(&clients_mutex);
 }
 
+void send_private_message(char *msg_string, client_struct *client_sender, char *receiver_name){
+    pthread_mutex_lock(&clients_mutex);
+    for(int i = 0; i < MAX_CLIENTS; i++){
+        if(clients[i]){
+            if(strcmp(clients[i]->username, receiver_name) == 0){
+                //Send message using protobuf
+                Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
+                void *buf; // Buffer to store serialized data
+                unsigned len;
+                srv_res.option = 4;
+                Chat__MessageCommunication msg = CHAT__MESSAGE_COMMUNICATION__INIT;
+                msg.message = msg_string;
+                msg.recipient = receiver_name;
+                msg.sender = client_sender->username; //sender
+                srv_res.messagecommunication = &msg;
+                len = chat__server_response__get_packed_size(&srv_res);
+                buf = malloc(len);
+                chat__server_response__pack(&srv_res, buf);
+                if (send(clients[i]->sockfd, buf, len, 0) < 0)
+                {
+                    perror("Failed to send message to client");
+                    break;
+                }
+                printf("Sent message to client %d\n", clients[i]->client_id);
+
+                free(buf);
+            }
+        }
+    }
+    pthread_mutex_unlock(&clients_mutex);
+}
+
+
+
 void *handle_client(void *arg){
     client_struct *client = (client_struct *)arg;
     char buffer[BUFFER_SIZE];
@@ -165,10 +199,11 @@ void *handle_client(void *arg){
             //change status
             break;
         case 4:
-            // Show the received message
-            printf("Received message from client %d\n", client->client_id);
-            broadcast(clientPetition->messagecommunication->message, client->client_id);
-            printf("Message: %s\n", clientPetition->messagecommunication->message);
+            if(strcmp(clientPetition->messagecommunication->recipient, "everyone") == 0){
+                broadcast(clientPetition->messagecommunication->message, client->client_id);
+            }else{
+                send_private_message(clientPetition->messagecommunication->message, client, clientPetition->messagecommunication->recipient);
+            }
             break;
         default:
             break;

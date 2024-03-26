@@ -18,6 +18,7 @@
 #define SA struct sockaddr
 #define BUFF_SIZE 100
 #define USERNAME_SIZE 100
+#define LENGTH 2048
 
 /*
  * Deletes the '\n' (new line char) from the given string
@@ -35,6 +36,144 @@ void delete_lb(char *arr, int length)
         }
     }
 }
+
+
+//Private message to specific user sender function
+void private_message(char *username, int sockfd ) {
+    printf("Chatting with a specific user\n");
+    char recipient[USERNAME_SIZE];
+    char messageContent[BUFF_SIZE];
+    int exitChat = 0;
+
+    printf("Enter the recipient's username: ");
+    scanf("%s", recipient);
+    printf("Recipient: %s\n", recipient);
+
+    do {
+        printf("> Enter your message (or type 'exit' to quit): ");
+        fgets(messageContent, BUFF_SIZE, stdin);
+        messageContent[strcspn(messageContent, "\n")] = 0;
+
+        if (strcmp(messageContent, "exit") == 0) {
+            exitChat = 1;
+            break;
+        }
+
+        Chat__MessageCommunication msgComm = CHAT__MESSAGE_COMMUNICATION__INIT;
+        msgComm.message = messageContent;
+        msgComm.recipient = recipient;
+        msgComm.sender = username;
+
+        Chat__ClientPetition clientPetition = CHAT__CLIENT_PETITION__INIT;
+        clientPetition.option = 4;
+        clientPetition.messagecommunication = &msgComm;
+
+        //Pack protobuf petition
+        unsigned len = chat__client_petition__get_packed_size(&clientPetition);
+        void *buf = malloc(len);
+        if (buf == NULL) {
+            // Manejo de error de memoria
+            fprintf(stderr, "Error al asignar memoria para el buffer de empaquetado.\n");
+            exit(1);
+        }
+
+        chat__client_petition__pack(&clientPetition, buf);
+
+        if (send(sockfd, buf, len, 0) == -1) {
+            perror("Send failed");
+            exit(EXIT_FAILURE);
+        }
+
+        printf("Message sent\n");
+
+        // Receive and display any incoming messages
+        char recvBuff[BUFF_SIZE];
+        int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
+        if (n == -1) {
+            perror("Recv failed");
+            exit(EXIT_FAILURE);
+        }
+
+        Chat__ClientPetition *clientPetitionRecv = chat__client_petition__unpack(NULL, n, recvBuff);
+        if (clientPetitionRecv == NULL) {
+            fprintf(stderr, "Error unpacking incoming message\n");
+            exit(1);
+        }
+
+        if (clientPetitionRecv->messagecommunication != NULL) {
+            printf("- %s: %s\n", clientPetitionRecv->messagecommunication->sender, clientPetitionRecv->messagecommunication->message);
+        }
+
+    } while (!exitChat);
+    
+}
+
+//Chat with all users function
+void chat_all_users(char *username, int sockfd) {
+    printf("Chatting with all users\n");
+    int exitChat = 0;
+    do {
+        printf("> Enter your message (or type 'exit' to quit): ");
+        char messageContent[BUFF_SIZE];
+        fgets(messageContent, BUFF_SIZE, stdin);
+        messageContent[strcspn(messageContent, "\n")] = 0;
+
+        if (strcmp(messageContent, "exit") == 0) {
+            exitChat = 1;
+            break;
+        }
+
+        Chat__MessageCommunication msgComm = CHAT__MESSAGE_COMMUNICATION__INIT;
+        msgComm.message = messageContent;
+        msgComm.recipient = "everyone";
+        msgComm.sender = username;  
+
+        Chat__ClientPetition clientPetition = CHAT__CLIENT_PETITION__INIT;
+        clientPetition.option = 4;
+        clientPetition.messagecommunication = &msgComm;
+
+        //Pack protobuf petition
+        unsigned len = chat__client_petition__get_packed_size(&clientPetition);
+        void *buf = malloc(len);
+        if (buf == NULL) {
+            // Manejo de error de memoria
+            fprintf(stderr, "Error al asignar memoria para el buffer de empaquetado.\n");
+            exit(1);
+        }
+
+        printf("Packed size: %d\n", len);
+        chat__client_petition__pack(&clientPetition, buf);
+
+        if (send(sockfd, buf, len, 0) == -1) {
+            perror("Send failed");
+            exit(EXIT_FAILURE);
+        }
+
+        printf("Message sent\n");
+
+        // Receive and display any incoming messages
+        char recvBuff[BUFF_SIZE];
+        int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
+        if (n == -1) {
+            perror("Recv failed");
+            exit(EXIT_FAILURE);
+        }
+
+        Chat__ClientPetition *clientPetitionRecv = chat__client_petition__unpack(NULL, n, recvBuff);
+        if (clientPetitionRecv == NULL) {
+            fprintf(stderr, "Error unpacking incoming message\n");
+            exit(1);
+        }
+
+        if (clientPetitionRecv->messagecommunication != NULL) {
+            printf("- %s: %s\n", clientPetitionRecv->messagecommunication->sender, clientPetitionRecv->messagecommunication->message);
+        }
+
+
+
+    } while (!exitChat);
+}
+
 
 int main(int argc, char *argv[]){
 
@@ -130,81 +269,15 @@ int main(int argc, char *argv[]){
         printf("6. Help\n");
         printf("7. Exit\n");
         //switch case
+        int exitChat = 0;
         scanf("%d", &option);
         switch(option){
             case 1: // Chat with all users
-                printf("Chatting with all users\n");
-                
-                    int exitChat = 0;
-                    do {
-                        printf("> Enter your message (or type 'exit' to quit): ");
-                        char messageContent[BUFF_SIZE];
-                        fgets(messageContent, BUFF_SIZE, stdin);
-                        messageContent[strcspn(messageContent, "\n")] = 0;
-
-                        if (strcmp(messageContent, "exit") == 0) {
-                            exitChat = 1;
-                            break;
-                        }
-
-                        Chat__MessageCommunication msgComm = CHAT__MESSAGE_COMMUNICATION__INIT;
-                        msgComm.message = messageContent;
-                        msgComm.recipient = "everyone";
-                        msgComm.sender = username;  
-
-                        Chat__ClientPetition clientPetition = CHAT__CLIENT_PETITION__INIT;
-                        clientPetition.option = 4;
-                        clientPetition.messagecommunication = &msgComm;
-
-                        //Pack protobuf petition
-                        len = chat__client_petition__get_packed_size(&clientPetition);
-                        void *buf = malloc(len);
-                        if (buf == NULL) {
-                            // Manejo de error de memoria
-                            fprintf(stderr, "Error al asignar memoria para el buffer de empaquetado.\n");
-                            exit(1);
-                        }
-
-                        printf("Packed size: %d\n", len);
-                        chat__client_petition__pack(&clientPetition, buf);
-
-                        if (send(sockfd, buf, len, 0) == -1) {
-                            perror("Send failed");
-                            exit(EXIT_FAILURE);
-                        }
-
-                        printf("Message sent\n");
-
-                        // Receive and display any incoming messages
-                        char recvBuff[BUFF_SIZE];
-                        int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
-                        if (n == -1) {
-                            perror("Recv failed");
-                            exit(EXIT_FAILURE);
-                        }
-
-                        Chat__ClientPetition *clientPetitionRecv = chat__client_petition__unpack(NULL, n, recvBuff);
-                        if (clientPetitionRecv == NULL) {
-                            fprintf(stderr, "Error unpacking incoming message\n");
-                            exit(1);
-                        }
-
-                        if (clientPetitionRecv->messagecommunication != NULL) {
-                            printf("- %s: %s\n", clientPetitionRecv->messagecommunication->sender, clientPetitionRecv->messagecommunication->message);
-                        }
-
-
-
-                    } while (!exitChat);
+                chat_all_users(username, sockfd);
 
                 break;
             case 2: // Send or receive private messages
-                printf("Private Chat\n");
-                printf("Insert the username of the user you want to chat with: ");
-                scanf("%s", recipient);
-                printf("Recipient: %s\n", recipient);
-
-
+                private_message(username, sockfd);
                 break;
             case 3: // Change Status
                 do{
