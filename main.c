@@ -12,6 +12,11 @@
 #include <sys/socket.h>
 #include <unistd.h> // read(), write(), close()
 #include "sistos.pb-c.h" // import the generated file from the .proto
+#include <pthread.h>
+#include <stdbool.h>
+
+volatile bool exitChat = false;
+
 
 #define MAX 80
 #define PORT 8080
@@ -43,7 +48,6 @@ void private_message(char *username, int sockfd ) {
     printf("Chatting with a specific user\n");
     char recipient[USERNAME_SIZE];
     char messageContent[BUFF_SIZE];
-    int exitChat = 0;
 
     printf("Enter the recipient's username: ");
     scanf("%s", recipient);
@@ -55,7 +59,7 @@ void private_message(char *username, int sockfd ) {
         messageContent[strcspn(messageContent, "\n")] = 0;
 
         if (strcmp(messageContent, "exit") == 0) {
-            exitChat = 1;
+            exitChat = true;
             break;
         }
 
@@ -108,10 +112,42 @@ void private_message(char *username, int sockfd ) {
     
 }
 
-//Chat with all users function
+void *receive_messages(void *socketfd) {
+    int sockfd = *((int *)socketfd);
+    char recvBuff[BUFF_SIZE];
+    int n;
+
+    while (!exitChat && (n = recv(sockfd, recvBuff, BUFF_SIZE, 0)) > 0) {
+        Chat__ClientPetition *clientPetitionRecv = chat__client_petition__unpack(NULL, n, recvBuff);
+        if (clientPetitionRecv == NULL) {
+            fprintf(stderr, "Error unpacking incoming message\n");
+            exit(1);
+        }
+
+        if (clientPetitionRecv->messagecommunication != NULL) {
+            printf("- %s: %s\n", clientPetitionRecv->messagecommunication->sender, clientPetitionRecv->messagecommunication->message);
+        }
+    }
+
+    if (n == -1 && !exitChat) {
+        perror("Recv failed");
+        exit(EXIT_FAILURE);
+    }
+
+    return NULL;
+}
+
+
+
 void chat_all_users(char *username, int sockfd) {
+    pthread_t receive_thread;
+
+    if (pthread_create(&receive_thread, NULL, receive_messages, &sockfd) != 0) {
+        fprintf(stderr, "Error al crear el hilo de recepción.\n");
+        exit(EXIT_FAILURE);
+    }
+
     printf("Chatting with all users\n");
-    int exitChat = 0;
     do {
         printf("> Enter your message (or type 'exit' to quit): ");
         char messageContent[BUFF_SIZE];
@@ -119,7 +155,7 @@ void chat_all_users(char *username, int sockfd) {
         messageContent[strcspn(messageContent, "\n")] = 0;
 
         if (strcmp(messageContent, "exit") == 0) {
-            exitChat = 1;
+            exitChat = true;
             break;
         }
 
@@ -151,27 +187,67 @@ void chat_all_users(char *username, int sockfd) {
 
         printf("Message sent\n");
 
-        // Receive and display any incoming messages
-        char recvBuff[BUFF_SIZE];
-        int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
-        if (n == -1) {
-            perror("Recv failed");
-            exit(EXIT_FAILURE);
-        }
-
-        Chat__ClientPetition *clientPetitionRecv = chat__client_petition__unpack(NULL, n, recvBuff);
-        if (clientPetitionRecv == NULL) {
-            fprintf(stderr, "Error unpacking incoming message\n");
-            exit(1);
-        }
-
-        if (clientPetitionRecv->messagecommunication != NULL) {
-            printf("- %s: %s\n", clientPetitionRecv->messagecommunication->sender, clientPetitionRecv->messagecommunication->message);
-        }
-
-
-
     } while (!exitChat);
+
+    pthread_join(receive_thread, NULL);
+}
+
+void change_status(char *username, int sockfd) {
+    int choice_status;
+    char *status;
+    char temp;
+    scanf("%c", &temp);
+    printf("Ingresa la opción para cambiar de status:\n");
+    printf("1. activo\n");
+    printf("2. inactivo\n");
+    printf("3. ocupado\n");
+    scanf("%d", &choice_status);
+
+    switch (choice_status) {
+        case 1:
+            status = "activo";
+            break;
+        case 2:
+            status = "inactivo";
+            break;
+        case 3:
+            status = "ocupado";
+            break;
+        default:
+            printf("Opción inválida\n");
+            break;
+    }
+
+    Chat__ClientPetition cli_ptn = CHAT__CLIENT_PETITION__INIT;
+    Chat__ChangeStatus chng_sts = CHAT__CHANGE_STATUS__INIT;
+    void *buf;                                                          // Buffer to store serialized data
+
+
+    chng_sts.username = username;
+    chng_sts.status = status;
+    cli_ptn.option = 3;
+    cli_ptn.change = &chng_sts;
+
+    //Pack protobuf petition
+    unsigned len = chat__client_petition__get_packed_size(&cli_ptn);
+    buf = malloc(len);
+    if (buf == NULL) {
+        // Manejo de error de memoria
+        fprintf(stderr, "Error al asignar memoria para el buffer de empaquetado.\n");
+        exit(1);
+    }
+
+    chat__client_petition__pack(&cli_ptn, buf);
+
+    if (send(sockfd, buf, len, 0) == -1) {
+        perror("Send failed");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Status changed\n");
+
+    free(buf);
+
 }
 
 
@@ -269,7 +345,6 @@ int main(int argc, char *argv[]){
         printf("6. Help\n");
         printf("7. Exit\n");
         //switch case
-        int exitChat = 0;
         scanf("%d", &option);
         switch(option){
             case 1: // Chat with all users
@@ -280,32 +355,7 @@ int main(int argc, char *argv[]){
                 private_message(username, sockfd);
                 break;
             case 3: // Change Status
-                do{
-                    printf("Select the status:\n");
-                    printf("1. Online\n");
-                    printf("2. Busy\n");
-                    printf("3. Offline\n");
-                    printf("4. Exit\n");
-                    scanf("%d", &option2);
-
-                    switch(option2){
-                        case 1: // Online
-                            printf("Online\n");
-                            break;
-                        case 2: // Busy
-                            printf("Busy\n");
-                            break;
-                        case 3: // Offline
-                            printf("Offline\n");
-                            break;
-                        case 4: // Exit
-                            printf("Exiting\n");
-                            break;
-                        default:
-                            printf("Invalid option\n");
-                            break;
-                    }
-                } while(option2 != 4);
+                change_status(username, sockfd);
                 break;
             case 4: // List Connected Users
 
@@ -317,6 +367,15 @@ int main(int argc, char *argv[]){
 
                 break;
             case 6: // Help
+                printf("Este chat permite a los usuarios conectarse a un servidor de chat y enviar mensajes a otros usuarios.\n");
+                printf("Las opciones disponibles son:\n");
+                printf("1. Chat with all users: Permite enviar mensajes a todos los usuarios conectados al servidor.\n");
+                printf("2. Private Chat: Permite enviar mensajes privados a un usuario específico.\n");
+                printf("3. Change Status: Permite cambiar el estado del usuario (activo, inactivo, ocupado).\n");
+                printf("4. List Connected Users: Muestra la lista de usuarios conectados al servidor.\n");
+                printf("5. Show User Info: Muestra la información de un usuario específico.\n");
+                printf("6. Help: Muestra la lista de opciones disponibles.\n");
+                printf("7. Exit: Sale del chat.\n");
                 break;
             case 7: // Exit
                 printf("Good Bye!\n");
