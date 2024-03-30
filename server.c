@@ -74,6 +74,8 @@ void client_handler(void *p_client) {
         if (receive < 0) {   // Error receiving message
             printf("ERROR RECEIVING PETITION (loop)\n");
             break;
+        } else if (receive == 0) {  // Client disconnected
+            break;
         }
 
         // Unpack the received petition
@@ -128,7 +130,7 @@ void client_handler(void *p_client) {
                     // Receive the next petition
                     receive = recv(np->data, recv_buffer, LENGTH_MSG, 0);
                     if (receive < 0) {
-                        printf("ERROR RECEIVING PETITIO (next petition)\n");
+                        printf("ERROR RECEIVING PETITION (next petition)\n");
                         break;
                     }
 
@@ -146,7 +148,6 @@ void client_handler(void *p_client) {
                     break;
         }
     }
-
     // Remove Node
     close(np->data);  // Close the socket
 

@@ -7,6 +7,6 @@
 
 #define USERNAME_SIZE 100
 
-#define MAX_CLIENTS 5
+#define MAX_CLIENTS 3
 
 #endif // PROTO
