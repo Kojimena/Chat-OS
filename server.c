@@ -52,6 +52,39 @@ void send_to_all_clients(ClientList *np, void *buffer, size_t len) {
     }
 }
 
+void send_users_list(ClientList *np) {
+    printf("Sending user list to %s (%s)\n", np->name, np->status);
+
+    Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
+    Chat__ConnectedUsersResponse connected_users = CHAT__CONNECTED_USERS_RESPONSE__INIT;
+    Chat__UserInfo **users = malloc(sizeof(Chat__UserInfo *) * MAX_CLIENTS);
+    ClientList *tmp = root->link;
+    int j = 0;
+    // print tmp status
+    while (tmp != NULL) {
+        Chat__UserInfo *user = malloc(sizeof(Chat__UserInfo));
+        chat__user_info__init(user);
+        user->username = tmp->name;
+        user->status = tmp->status;
+        users[j] = user;
+        j++;
+        tmp = tmp->link;
+    }
+
+    connected_users.n_connectedusers = j;
+    connected_users.connectedusers = users;
+    srv_res.option = 2;
+    srv_res.connectedusers = &connected_users;
+    void *buf;
+    unsigned len;
+    len = chat__server_response__get_packed_size(&srv_res);
+    buf = malloc(len);
+    chat__server_response__pack(&srv_res, buf);
+    send(np->data, buf, len, 0);
+    free(buf);
+    free(users);
+}
+
 
 /**
  * Handles the client on the server side, via threads
@@ -66,6 +99,10 @@ void client_handler(void *p_client) {
     recv(np->data, username, USERNAME_SIZE, 0);
     // Set the username
     strncpy(np->name, username, USERNAME_SIZE);
+    
+    if (np->status != NULL) {
+        strcpy(np->status, "activo");
+    }
 
     // Petition loop
     while (1) {
@@ -89,8 +126,11 @@ void client_handler(void *p_client) {
             case 1:
                 break;
             case 2:
+                //Getr user list, send the root of the list
+                send_users_list(np);
                 break;
-            case 3:
+            case 3: // Change user status
+                                
                 break;
             case 4: // Chatroom message
                 int leave_flag = 0;

@@ -124,6 +124,108 @@ void send_msg_handler() {
 }
 
 
+void change_status(){
+    int option = 1;
+    char *status;
+    printf("1. Activo\n");
+    printf("2. Ocupado\n");
+    printf("3. Inactivo\n");
+    scanf("%d", &option);
+
+    switch(option){
+        case 1:
+            status = "activo";
+            break;
+        case 2:
+            status = "ocupado";
+            break;
+        case 3:
+            status = "inactivo";
+            break;
+        default:
+            printf("Invalid option\n");
+            break;
+    }
+
+    Chat__ChangeStatus change_status_petition = CHAT__CHANGE_STATUS__INIT;
+    change_status_petition.username = username;
+    change_status_petition.status = status;
+
+
+    Chat__ClientPetition client_petition = CHAT__CLIENT_PETITION__INIT;
+    client_petition.option = 3;
+    client_petition.change = &change_status_petition;
+
+    size_t len = chat__client_petition__get_packed_size(&client_petition);
+    void *buffer = malloc(len);
+    if (buffer == NULL) {
+        printf("Error assigning memory\n");
+        return;
+    }
+    chat__client_petition__pack(&client_petition, buffer);
+
+    if (send(sockfd, buffer, len, 0) < 0) {
+        printf("Error sending status change petition to the server\n");
+        return;
+    }
+
+    free(buffer);
+
+    return;
+}
+
+
+void receive_users_list(int sockfd) {
+    char recvBuff[BUFF_SIZE];
+    int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
+    if (n == -1) {
+        perror("Recv failed");
+        exit(EXIT_FAILURE);
+    }
+
+    Chat__ServerResponse *srv_res = chat__server_response__unpack(NULL, n, recvBuff);
+    if (srv_res == NULL) {
+        fprintf(stderr, "Error unpacking incoming message\n");
+        exit(1);
+    }
+
+    if (srv_res->option == 2 && srv_res->connectedusers != NULL) {
+        printf("Connected users:\n");
+        for (int i = 0; i < srv_res->connectedusers->n_connectedusers; i++) {
+            printf("- %s (%s)\n", srv_res->connectedusers->connectedusers[i]->username, srv_res->connectedusers->connectedusers[i]->status);
+        }
+    }
+
+    chat__server_response__free_unpacked(srv_res, NULL);
+}
+
+void list_connected_users(int sockfd) {
+    Chat__ClientPetition cli_ptn = CHAT__CLIENT_PETITION__INIT;
+    Chat__UserRequest usr_rqst = CHAT__USER_REQUEST__INIT;
+
+    void *buf;                                                          
+    unsigned len; 
+
+    usr_rqst.user = "everyone";                                                      
+    
+    cli_ptn.option = 2;
+    cli_ptn.users = &usr_rqst;
+
+    len = chat__client_petition__get_packed_size(&cli_ptn);
+    buf = malloc(len);
+
+    chat__client_petition__pack (&cli_ptn, buf);
+
+    if (send(sockfd, buf, len, 0) == -1) {
+        perror("Send failed");
+        exit(EXIT_FAILURE);
+    }
+
+    free(buf);
+    receive_users_list(sockfd);
+}
+
+
 int main(int argc, char *argv[]) {
     char *username_arg = argv[1];
     char *server_ip = argv[2];
@@ -215,11 +317,11 @@ int main(int argc, char *argv[]) {
             case 2:
                 // Private Chat
                 break;
-            case 3:
-                // Change Status
+            case 3: // Change Status
+                change_status();
                 break;
-            case 4:
-                // List Connected Users
+            case 4: // List Connected Users
+                list_connected_users(sockfd);
                 break;
             case 5:
                 // Show User Info
