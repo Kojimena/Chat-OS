@@ -8,6 +8,7 @@
 #include <unistd.h> // read(), write(), close()
 #include <arpa/inet.h> // inet_addr()
 #include <pthread.h>
+#include <stdbool.h>
 
 
 #include "sistos.pb-c.h" // import the generated file from the .proto
@@ -239,6 +240,45 @@ void get_users_list(client_struct *client){
     pthread_mutex_unlock(&clients_mutex);
 }
 
+void get_user_info(client_struct *client, char *username){
+    pthread_mutex_lock(&clients_mutex);
+    printf("Sending user information to client %d\n", client->client_id);
+    Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
+    Chat__UserInfo user_info = CHAT__USER_INFO__INIT;
+    bool found = false;
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i] != NULL && strcmp(clients[i]->username, username) == 0) {
+            user_info.username = clients[i]->username;
+            user_info.status = clients[i]->status;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        pthread_mutex_unlock(&clients_mutex);
+        return;
+    }
+    srv_res.option = 5;
+    srv_res.userinforesponse = &user_info;
+    void *buf;
+    unsigned len;
+    len = chat__server_response__get_packed_size(&srv_res);
+    buf = malloc(len);
+    if (buf == NULL) {
+        pthread_mutex_unlock(&clients_mutex);
+        return;
+    }
+    chat__server_response__pack(&srv_res, buf);
+    if (send(client->sockfd, buf, len, 0) < 0) {
+        perror("Failed to send message to client");
+        free(buf);
+        pthread_mutex_unlock(&clients_mutex);
+        return;
+    }
+    free(buf);
+    pthread_mutex_unlock(&clients_mutex);
+}
+
 
 
 void *handle_client(void *arg){
@@ -316,6 +356,9 @@ void *handle_client(void *arg){
             }else{
                 send_private_message(clientPetition->messagecommunication->message, client, clientPetition->messagecommunication->recipient);
             }
+            break;
+        case 5:
+            get_user_info(client, clientPetition->users->user);
             break;
         default:
             break;

@@ -280,7 +280,9 @@ void list_connected_users(int sockfd) {
     Chat__UserRequest usr_rqst = CHAT__USER_REQUEST__INIT;
 
     void *buf;                                                          
-    unsigned len;                                                       
+    unsigned len; 
+
+    usr_rqst.user = "everyone";                                                      
     
     cli_ptn.option = 2;
     cli_ptn.users = &usr_rqst;
@@ -299,6 +301,64 @@ void list_connected_users(int sockfd) {
     receive_users_list(sockfd);
 }
 
+void receive_user_info(int sockfd) {
+    char recvBuff[BUFF_SIZE];
+    int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
+    if (n == -1) {
+        perror("Recv failed");
+        exit(EXIT_FAILURE);
+    }
+
+    Chat__ServerResponse *srv_res = chat__server_response__unpack(NULL, n, recvBuff);
+    if (srv_res == NULL) {
+        fprintf(stderr, "Error unpacking incoming message\n");
+        exit(1);
+    }
+
+    if (srv_res->option == 5 && srv_res->userinforesponse != NULL) {
+        printf("User info:\n");
+        printf("- Username: %s\n", srv_res->userinforesponse->username);
+        printf("- Status: %s\n", srv_res->userinforesponse->status);
+    }
+}
+
+void user_info(int sockfd) {
+    char name_user[USERNAME_SIZE];
+    char buffer[BUFF_SIZE];
+    printf("Enter the username to get the information: ");
+    scanf("%s", name_user);
+
+    Chat__ClientPetition cli_ptn = CHAT__CLIENT_PETITION__INIT;
+    Chat__UserRequest usr_rqst = CHAT__USER_REQUEST__INIT;
+
+    void *buf;
+    unsigned len;
+
+    usr_rqst.user = name_user;
+
+    cli_ptn.option = 5;
+    cli_ptn.users = &usr_rqst;
+
+    len = chat__client_petition__get_packed_size(&cli_ptn);
+    buf = malloc(len);
+    if (buf == NULL) {
+        // Manejo de error de memoria
+        fprintf(stderr, "Error al asignar memoria para el buffer de empaquetado.\n");
+        exit(1);
+    }
+
+    chat__client_petition__pack(&cli_ptn, buf);
+
+    if (send(sockfd, buf, len, 0) == -1) {
+        perror("Send failed");
+        exit(EXIT_FAILURE);
+    }
+
+    free(buf);
+
+    receive_user_info(sockfd);
+
+}
 
 
 int main(int argc, char *argv[]){
@@ -399,7 +459,6 @@ int main(int argc, char *argv[]){
         switch(option){
             case 1: // Chat with all users
                 chat_all_users(username, sockfd);
-
                 break;
             case 2: // Send or receive private messages
                 private_message(username, sockfd);
@@ -409,13 +468,9 @@ int main(int argc, char *argv[]){
                 break;
             case 4: // List Connected Users
                 list_connected_users(sockfd);
-
                 break;
             case 5: // User Info
-                printf("Insert the username to get the information: ");
-                scanf("%s", recipient);
-                printf("%s's Information: ");
-
+                user_info(sockfd);
                 break;
             case 6: // Help
                 printf("Este chat permite a los usuarios conectarse a un servidor de chat y enviar mensajes a otros usuarios.\n");
