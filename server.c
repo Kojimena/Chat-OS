@@ -58,60 +58,28 @@ void send_to_all_clients(ClientList *np, void *buffer, size_t len) {
  * @param p_client
  */
 void client_handler(void *p_client) {
-    int leave_flag = 0;  // Flag to leave the chat
     char username[USERNAME_SIZE] = {};
     char recv_buffer[LENGTH_MSG] = {};
     ClientList *np = (ClientList *) p_client;
 
     // Receive the username
     recv(np->data, username, USERNAME_SIZE, 0);
-
     // Set the username
     strncpy(np->name, username, USERNAME_SIZE);
-    printf("%s | %s | [%d] | Joined the chatroom.\n", np->ip, np->name, np->data);
 
-    // Send a message to all clients
-    Chat__MessageCommunication msgComm = CHAT__MESSAGE_COMMUNICATION__INIT;
-    msgComm.sender = "Server";
-    msgComm.recipient = "everyone";
-    char message[LENGTH_MSG];
-    sprintf(message, "%s joined the chatroom.", np->name);
-    msgComm.message = message;
-
-    Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
-    serverResponse.option = 4;
-    serverResponse.messagecommunication = &msgComm;
-
-    size_t len = chat__server_response__get_packed_size(&serverResponse);
-    void *buffer = malloc(len);
-    if (buffer == NULL) {
-        printf("Error assigning memory\n");
-        return;
-    }
-    chat__server_response__pack(&serverResponse, buffer);
-
-    send_to_all_clients(np, buffer, len);
-
-    // Free the buffer
-    free(buffer);
-
-    // Conversation
+    // Petition loop
     while (1) {
+        // Wait for a petition
         int receive = recv(np->data, recv_buffer, LENGTH_MSG, 0);
         if (receive < 0) {   // Error receiving message
-            printf("ERROR RECEIVING MESSAGE\n");
-            break;
-        } else if (receive == 0 || strcmp(recv_buffer, "exit") == 0) { // Client left
-            printf("%s | %s | [%d] | Left the chatroom.\n", np->ip, np->name, np->data);
+            printf("ERROR RECEIVING PETITION (loop)\n");
             break;
         }
 
-        // By now, we have received a message to send in the chatroom
-
-        // Unpack the received message
+        // Unpack the received petition
         Chat__ClientPetition *petition = chat__client_petition__unpack(NULL, receive, recv_buffer);
         if (petition == NULL) {
-            printf("Error unpacking message. User might've left.\n");
+            printf("Error unpacking message.\n");
             break;
         }
 
@@ -123,33 +91,59 @@ void client_handler(void *p_client) {
             case 3:
                 break;
             case 4: // Chatroom message
-                // Create a server response
-                Chat__MessageCommunication msgCommSend = CHAT__MESSAGE_COMMUNICATION__INIT;
-                msgCommSend.sender = petition->messagecommunication->sender;
-                msgCommSend.recipient = petition->messagecommunication->recipient;
-                msgCommSend.message = petition->messagecommunication->message;
+                int leave_flag = 0;
+                while (!leave_flag) {  // Chat loop
+                    // Check if the message is 'exit'
+                    if (strcmp(petition->messagecommunication->message, "exit") == 0) {
+                        leave_flag = 1;
+                    }
 
-                Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
-                serverResponse.option = 4;
-                serverResponse.messagecommunication = &msgCommSend;
+                    // Create a server response
+                    Chat__MessageCommunication msgCommSend = CHAT__MESSAGE_COMMUNICATION__INIT;
+                    msgCommSend.sender = petition->messagecommunication->sender;
+                    msgCommSend.recipient = petition->messagecommunication->recipient;
+                    msgCommSend.message = petition->messagecommunication->message;
 
-                size_t len = chat__server_response__get_packed_size(&serverResponse);
-                void *buffer = malloc(len);
-                if (buffer == NULL) {
-                    printf("Error assigning memory\n");
-                    break;
+                    Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
+                    serverResponse.option = 4;
+                    serverResponse.messagecommunication = &msgCommSend;
+
+                    size_t len = chat__server_response__get_packed_size(&serverResponse);
+                    void *buffer = malloc(len);
+                    if (buffer == NULL) {
+                        printf("Error assigning memory\n");
+                        break;
+                    }
+                    chat__server_response__pack(&serverResponse, buffer);
+
+                    printf("%s sent: %s\n", petition->messagecommunication->sender,
+                           petition->messagecommunication->message);
+
+                    // Send the server response
+                    send_to_all_clients(np, buffer, len);
+
+                    // Free the buffer
+                    free(buffer);
+
+                    // Receive the next petition
+                    receive = recv(np->data, recv_buffer, LENGTH_MSG, 0);
+                    if (receive < 0) {
+                        printf("ERROR RECEIVING PETITIO (next petition)\n");
+                        break;
+                    }
+
+                    // Unpack the received petition
+                    petition = chat__client_petition__unpack(NULL, receive, recv_buffer);
+                    if (petition == NULL) {
+                        printf("Error unpacking message.\n");
+                        break;
+                    }
+
+                    // Loop with the new petition
                 }
-                chat__server_response__pack(&serverResponse, buffer);
-
-                printf("%s sent: %s\n", petition->messagecommunication->sender,
-                       petition->messagecommunication->message);
-
-                // Send the server response
-                send_to_all_clients(np, buffer, len);
-
-                // Free the buffer
-                free(buffer);
-                break;
+                break;  // End of case 4
+                default:
+                    break;
         }
     }
 
@@ -168,7 +162,7 @@ void client_handler(void *p_client) {
 int main(int argc, char *argv[]) {
     // Create the server with console args
     if (argc < 2) {
-        printf("Please provide a port number");
+        printf("Please provide a port number\n");
         printf("Usage: %s <port>\n", argv[0]);
         return -1;
     }
@@ -179,7 +173,7 @@ int main(int argc, char *argv[]) {
     // Create socket
     server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_sockfd == -1) {
-        printf("Fail to create a socket.");
+        printf("Fail to create a socket.\n");
         exit(EXIT_FAILURE);
     } else printf("Socket created!\n");
 
@@ -198,7 +192,7 @@ int main(int argc, char *argv[]) {
 
     // Bind and Listen
     if (bind(server_sockfd, (struct sockaddr *) &server_info, s_addrlen) == -1) {
-        printf("Fail to bind socket.");
+        printf("Fail to bind socket.\n");
         exit(EXIT_FAILURE);
     } else printf("Socket bound!\n");
 

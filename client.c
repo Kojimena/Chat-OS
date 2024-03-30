@@ -14,7 +14,7 @@
 #include "sistos.pb-c.h" // import the generated file from the .proto
 
 // Global variables
-volatile sig_atomic_t flag = 0;  // Flag to leave the chat
+int exit_flag = 0; // Flag to signal threads to exit
 int sockfd = 0;  // Socket file descriptor
 char username[USERNAME_SIZE] = {};  // Username
 
@@ -23,7 +23,7 @@ char username[USERNAME_SIZE] = {};  // Username
  * @param sig Signal number
  */
 void catch_exit(int sig) {
-    flag = 1;
+    exit_flag = 1;
 }
 
 /**
@@ -33,30 +33,34 @@ void catch_exit(int sig) {
 void recv_msg_handler() {
     char recv_buffer[LENGTH_SEND] = {}; // Buffer to receive the message (protocol expected)
 
-    while (1) {
+    // Detach the current thread
+    pthread_detach(pthread_self());
+    while (!exit_flag) {
         int receive = recv(sockfd, recv_buffer, LENGTH_SEND, 0);  // Receive the message
-        if (receive > 0) {
-            // Unpack the message
-            Chat__ServerResponse *serverResponse = chat__server_response__unpack(NULL, receive, recv_buffer);
-            if (serverResponse == NULL) {
-                printf("Error unpacking the message\n");
-                continue;
-            }
-
-            // Print the message
-            printf("\r%s | %s\n", serverResponse->messagecommunication->sender,
-                   serverResponse->messagecommunication->message);
-
-            // Free the memory
-            chat__server_response__free_unpacked(serverResponse, NULL);
-
-            // Print esthetics
-            str_overwrite_stdout();
-        } else {
-            printf("Error receiving the message. Won't be able to continue receiving messages\n");
+        if (receive == -1) {
+            printf("Error receiving the message\n");
+            break;
+        } else if (receive == 0) {
             break;
         }
+        // Unpack the message
+        Chat__ServerResponse *serverResponse = chat__server_response__unpack(NULL, receive, recv_buffer);
+        if (serverResponse == NULL) {
+            printf("Error unpacking the message\n");
+            continue;
+        }
+
+        // Print the message
+        printf("\r%s | %s\n", serverResponse->messagecommunication->sender,
+               serverResponse->messagecommunication->message);
+
+        // Free the memory
+        chat__server_response__free_unpacked(serverResponse, NULL);
+
+        // Print esthetics
+        str_overwrite_stdout();
     }
+    pthread_exit(0);
 }
 
 /**
@@ -65,7 +69,10 @@ void recv_msg_handler() {
 void send_msg_handler() {
     char message[LENGTH_MSG] = {};  // Buffer to store the message
 
-    while (1) {
+    // Detach the current thread
+    pthread_detach(pthread_self());
+
+    while (!exit_flag) {
         str_overwrite_stdout();
         while (fgets(message, LENGTH_MSG, stdin) != NULL) { // Read the message
             str_trim_lf(message, LENGTH_MSG);  // Remove \n
@@ -103,14 +110,17 @@ void send_msg_handler() {
         // If the message is "exit", leave the chatroom client side
         if (strcmp(message, "exit") == 0) {
             printf("Leaving chatroom\n");
-            break;
+            exit_flag = 1;  // Set the flag to signal threads to exit
+            pthread_exit(0);  // Terminate the current thread
         }
 
         // Free the buffer
         free(buffer);
+        if (exit_flag) {
+            break;
+        }
     }
-
-    catch_exit(2);
+    pthread_exit(0);
 }
 
 
@@ -167,20 +177,71 @@ int main(int argc, char *argv[]) {
     // Send username to server
     send(sockfd, username, USERNAME_SIZE, 0);
 
-    pthread_t send_msg_thread;
-    if (pthread_create(&send_msg_thread, NULL, (void *) send_msg_handler, NULL) != 0) {
-        printf("Create pthread error.\n");
-        exit(EXIT_FAILURE);
-    }
+    // Show menu
+    while (1) {
+        int option = 0;
+        printf("1. Join Chatroom\n");
+        printf("2. Private Chat\n");
+        printf("3. Change Status\n");
+        printf("4. List Connected Users\n");
+        printf("5. Show User Info\n");
+        printf("6. Help\n");
+        printf("7. Exit\n");
 
-    pthread_t recv_msg_thread;
-    if (pthread_create(&recv_msg_thread, NULL, (void *) recv_msg_handler, NULL) != 0) {
-        printf("Create pthread error.\n");
-        exit(EXIT_FAILURE);
+        // Get user option
+        scanf("%d", &option);
+
+        switch (option) {
+            case 1: // Join Chatroom
+                // Reset the exit_flag
+                exit_flag = 0;
+
+                // Create threads for sending and receiving messages
+                pthread_t send_msg_thread, recv_msg_thread;
+                if (pthread_create(&send_msg_thread, NULL, (void *) send_msg_handler, NULL) != 0 ||
+                    pthread_create(&recv_msg_thread, NULL, (void *) recv_msg_handler, NULL) != 0) {
+                    printf("Error creating threads.\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                while (!exit_flag) {
+                    sleep(1);
+                }
+
+                pthread_cancel(send_msg_thread);
+                pthread_cancel(recv_msg_thread);
+
+                break;
+            case 2:
+                // Private Chat
+                break;
+            case 3:
+                // Change Status
+                break;
+            case 4:
+                // List Connected Users
+                break;
+            case 5:
+                // Show User Info
+                break;
+            case 6:
+                // Help
+                break;
+            case 7: // Exit
+                printf("Exiting...\n");
+                close(sockfd);
+                exit(EXIT_SUCCESS);
+            default:
+                printf("Invalid option\n");
+                break;
+        }
+        if (exit_flag) {
+            exit_flag = 0;
+        }
     }
 
     while (1) {
-        if (flag) {
+        if (exit_flag) {
             printf("\nBye\n");
             break;
         }
