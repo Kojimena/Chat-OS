@@ -1,487 +1,239 @@
 #include <stdio.h>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
+#include <signal.h>
+#include <unistd.h>
 #include <sys/types.h>
-#include <unistd.h> // read(), write(), close()
-#include <arpa/inet.h> // inet_addr()
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <pthread.h>
-#include <stdbool.h>
-
+#include "proto.h"
+#include "server.h"
 
 #include "sistos.pb-c.h" // import the generated file from the .proto
 
-#define BUFFER_SIZE 250
-#define USERNAME_SIZE 32
-#define STATUS_SIZE 32
-#define SA struct sockaddr
-#define MAX_CLIENTS 100
-#define CONNECTION_REQUEST_BEFORE_REFUSAL 5
+// Global variables
+int server_sockfd = 0, client_sockfd = 0;
+ClientList *root, *now;
 
-struct sockaddr_in servaddr, cli;
-pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-
-//Client Structure
-typedef struct {
-    struct sockaddr_in address;
-    int sockfd;
-    pthread_t thread_id;
-    int client_id;
-    clock_t last_connection;
-    char status[STATUS_SIZE];
-    char username[USERNAME_SIZE];
-} client_struct;
-
-client_struct* clients[MAX_CLIENTS] = {NULL};
-int clients_connected = 0;
-
-
-void add_client(client_struct *client){
-    pthread_mutex_lock(&clients_mutex); // Bloquea el mutex antes de acceder a la lista de clientes
-    for(int i = 0; i < MAX_CLIENTS; i++){
-        if(clients[i] == NULL){
-            clients[i] = client;
-            clients_connected++;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&clients_mutex); // Libera el mutex después de modificar la lista de clientes
-}
-
-
-/*
- * Creates a new client_struct and returns a pointer to it
+/**
+ * Signal handler for SIGINT
+ * Handles the exit of the server
+ * @param sig Signal number
  */
-client_struct *create_client_struct(struct sockaddr_in address, int sockfd, int client_id, clock_t last_connection, char *status, char *username){
-    client_struct *client = (client_struct *)malloc(sizeof(client_struct));
-    client->address = address;
-    client->sockfd = sockfd;
-    client->client_id = client_id;
-    client->last_connection = last_connection;
-    strcpy(client->status, status);
-    strcpy(client->username, username);
-
-    // Show the new client's information
-    printf("Client %d connected\n", clients_connected);
-    printf("Username: %s\n", client->username);
-    printf("ID: %d\n", client->client_id);
-    printf("IP: %s\n", inet_ntoa(address.sin_addr));
-    printf("Port: %d\n", ntohs(address.sin_port));
-    printf("Status: %s\n", client->status);
-    printf("Last Connection: %ld\n", client->last_connection);
-
-    return client;
+void catch_exit(int sig) {
+    ClientList *tmp;
+    while (root != NULL) {
+        close(root->data);  // Closes all the sockets including the server_sockfd
+        printf("\nSocketfd closed: %d\n", root->data);
+        tmp = root;
+        root = root->link;
+        free(tmp);  // Removes the node
+    }
+    printf("Bye\n");
+    exit(EXIT_SUCCESS);
 }
 
-void broadcast(char *message, int current_client){
-    pthread_mutex_lock(&clients_mutex);
-    for(int i = 0; i < MAX_CLIENTS; i++){
-        if(clients[i]){
-            if (clients[i]->client_id != current_client) {
-                //Send message using protobuf
-				Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
-				void *buf; // Buffer to store serialized data
-				unsigned len;
-				srv_res.option = 4;
-				Chat__MessageCommunication msg = CHAT__MESSAGE_COMMUNICATION__INIT;
-				msg.message = message;
-				msg.recipient = "everyone";
-				msg.sender = clients[current_client]->username; //sender
-				srv_res.messagecommunication = &msg;
-				len = chat__server_response__get_packed_size(&srv_res);
-				buf = malloc(len);
-				chat__server_response__pack(&srv_res, buf);
-				if (send(clients[i]->sockfd, buf, len, 0) < 0)
-				{
-					perror("Failed to send message to client");
-                    break;
-				}
-                printf("Sent message to client %d\n", clients[i]->client_id);
-
-				free(buf);
-			}
-		}
-	}
-	pthread_mutex_unlock(&clients_mutex);
-}
-
-void send_private_message(char *msg_string, client_struct *client_sender, char *receiver_name){
-    pthread_mutex_lock(&clients_mutex);
-    for(int i = 0; i < MAX_CLIENTS; i++){
-        if(clients[i]){
-            if(strcmp(clients[i]->username, receiver_name) == 0){
-                //Send message using protobuf
-                Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
-                void *buf; // Buffer to store serialized data
-                unsigned len;
-                srv_res.option = 4;
-                Chat__MessageCommunication msg = CHAT__MESSAGE_COMMUNICATION__INIT;
-                msg.message = msg_string;
-                msg.recipient = receiver_name;
-                msg.sender = client_sender->username; //sender
-                srv_res.messagecommunication = &msg;
-                len = chat__server_response__get_packed_size(&srv_res);
-                buf = malloc(len);
-                chat__server_response__pack(&srv_res, buf);
-                if (send(clients[i]->sockfd, buf, len, 0) < 0)
-                {
-                    perror("Failed to send message to client");
-                    break;
-                }
-                printf("Sent message to client %d\n", clients[i]->client_id);
-
-                free(buf);
-            }
+/**
+ * Sends a message to all clients except the one that sent the message
+ * @param np  The client that sent the message
+ * @param buffer  The message to send (Protocol expected)
+ * @param len  The length of the message
+ */
+void send_to_all_clients(ClientList *np, void *buffer, size_t len) {
+    ClientList *tmp = root->link;
+    while (tmp != NULL) {
+        if (np->data != tmp->data) { // All Clients except itself
+            printf("Sent to sockfd %d\n", tmp->data);
+            send(tmp->data, buffer, len, 0);
         }
+        tmp = tmp->link;
     }
-    pthread_mutex_unlock(&clients_mutex);
 }
 
-void change_user_status(client_struct *client, char *status, char *username, int inactive) {
-    pthread_mutex_lock(&clients_mutex);
 
-    for (int i = 0; i < MAX_CLIENTS; ++i) {
-        if (clients[i] != NULL && strcmp(clients[i]->username, username) == 0) {
-            strcpy(clients[i]->status, status);
+/**
+ * Handles the client on the server side, via threads
+ * @param p_client
+ */
+void client_handler(void *p_client) {
+    int leave_flag = 0;  // Flag to leave the chat
+    char username[USERNAME_SIZE] = {};
+    char recv_buffer[LENGTH_MSG] = {};
+    ClientList *np = (ClientList *) p_client;
 
-            Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
-            void *buf; 
-            unsigned len;
-            srv_res.option = 3; 
-            srv_res.code = 202; 
-            srv_res.servermessage = "Status changed successfully";
-            len = chat__server_response__get_packed_size(&srv_res);
-            buf = malloc(len);
-            if (buf == NULL) {
-                pthread_mutex_unlock(&clients_mutex);
-                return; 
-            }
-            chat__server_response__pack(&srv_res, buf);
-            if (send(clients[i]->sockfd, buf, len, 0) < 0) {
-                perror("Failed to send message to client");
-                free(buf);
-                pthread_mutex_unlock(&clients_mutex);
-                return; 
-            }
-            free(buf); 
+    // Receive the username
+    recv(np->data, username, USERNAME_SIZE, 0);
 
-            // Imprimir la información del cambio de estado
-            printf("Sent message to client %d\n", clients[i]->client_id);
-            printf("Username: %s\n", clients[i]->username);
-            printf("Status: %s\n", clients[i]->status);
+    // Set the username
+    strncpy(np->name, username, USERNAME_SIZE);
+    printf("%s | %s | [%d] | Joined the chatroom.\n", np->ip, np->name, np->data);
 
-            //broadcast the status change
-            //broadcast("The following user has changed its status", clients[i]->client_id);
+    // Send a message to all clients
+    Chat__MessageCommunication msgComm = CHAT__MESSAGE_COMMUNICATION__INIT;
+    msgComm.sender = "Server";
+    msgComm.recipient = "everyone";
+    char message[LENGTH_MSG];
+    sprintf(message, "%s joined the chatroom.", np->name);
+    msgComm.message = message;
 
-            pthread_mutex_unlock(&clients_mutex);
-            return; 
-        }
-    }
+    Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
+    serverResponse.option = 4;
+    serverResponse.messagecommunication = &msgComm;
 
-    // Si el usuario no se encuentra, se envía un mensaje de error al solicitante
-    pthread_mutex_unlock(&clients_mutex); 
-    Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
-    void *buf;
-    unsigned len;
-    srv_res.option = 3;
-    srv_res.code = 500; 
-    srv_res.servermessage = "Usuario no encontrado";
-    len = chat__server_response__get_packed_size(&srv_res);
-    buf = malloc(len);
-    if (buf == NULL) {
-        return; 
-    }
-    chat__server_response__pack(&srv_res, buf);
-    if (send(client->sockfd, buf, len, 0) < 0) {
-        perror("Failed to send message to client");
-    }
-    free(buf); 
-}
-
-void get_users_list(client_struct *client){
-    pthread_mutex_lock(&clients_mutex);
-    printf("Sending user list to client %d\n", client->client_id);
-    Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
-    Chat__ConnectedUsersResponse connected_users = CHAT__CONNECTED_USERS_RESPONSE__INIT;
-    Chat__UserInfo **users = malloc(sizeof(Chat__UserInfo *) * clients_connected);
-    int j = 0;
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (clients[i] != NULL) {
-            users[j] = malloc(sizeof(Chat__UserInfo));
-            chat__user_info__init(users[j]);
-            users[j]->username = clients[i]->username;
-            users[j]->status = clients[i]->status;
-            j++;
-        }
-    }
-    connected_users.n_connectedusers = j;
-    connected_users.connectedusers = users;
-    srv_res.option = 2;
-    srv_res.connectedusers = &connected_users;
-    void *buf;
-    unsigned len;
-    len = chat__server_response__get_packed_size(&srv_res);
-    buf = malloc(len);
-    if (buf == NULL) {
-        pthread_mutex_unlock(&clients_mutex);
+    size_t len = chat__server_response__get_packed_size(&serverResponse);
+    void *buffer = malloc(len);
+    if (buffer == NULL) {
+        printf("Error assigning memory\n");
         return;
     }
-    chat__server_response__pack(&srv_res, buf);
-    if (send(client->sockfd, buf, len, 0) < 0) {
-        perror("Failed to send message to client");
-        free(buf);
-        pthread_mutex_unlock(&clients_mutex);
-        return;
-    }
-    free(buf);
-    pthread_mutex_unlock(&clients_mutex);
-}
+    chat__server_response__pack(&serverResponse, buffer);
 
-void get_user_info(client_struct *client, char *username){
-    pthread_mutex_lock(&clients_mutex);
-    printf("Sending user information to client %d\n", client->client_id);
-    Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
-    Chat__UserInfo user_info = CHAT__USER_INFO__INIT;
-    bool found = false;
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        if (clients[i] != NULL && strcmp(clients[i]->username, username) == 0) {
-            user_info.username = clients[i]->username;
-            user_info.status = clients[i]->status;
-            found = true;
+    send_to_all_clients(np, buffer, len);
+
+    // Free the buffer
+    free(buffer);
+
+    // Conversation
+    while (1) {
+        int receive = recv(np->data, recv_buffer, LENGTH_MSG, 0);
+        if (receive < 0) {   // Error receiving message
+            printf("ERROR RECEIVING MESSAGE\n");
+            break;
+        } else if (receive == 0 || strcmp(recv_buffer, "exit") == 0) { // Client left
+            printf("%s | %s | [%d] | Left the chatroom.\n", np->ip, np->name, np->data);
             break;
         }
-    }
-    if (!found) {
-        pthread_mutex_unlock(&clients_mutex);
-        return;
-    }
-    srv_res.option = 5;
-    srv_res.userinforesponse = &user_info;
-    void *buf;
-    unsigned len;
-    len = chat__server_response__get_packed_size(&srv_res);
-    buf = malloc(len);
-    if (buf == NULL) {
-        pthread_mutex_unlock(&clients_mutex);
-        return;
-    }
-    chat__server_response__pack(&srv_res, buf);
-    if (send(client->sockfd, buf, len, 0) < 0) {
-        perror("Failed to send message to client");
-        free(buf);
-        pthread_mutex_unlock(&clients_mutex);
-        return;
-    }
-    free(buf);
-    pthread_mutex_unlock(&clients_mutex);
-}
 
+        // By now, we have received a message to send in the chatroom
 
+        // Unpack the received message
+        Chat__ClientPetition *petition = chat__client_petition__unpack(NULL, receive, recv_buffer);
+        if (petition == NULL) {
+            printf("Error unpacking message. User might've left.\n");
+            break;
+        }
 
-void *handle_client(void *arg){
-    client_struct *client = (client_struct *)arg;
-    char buffer[BUFFER_SIZE];
+        switch (petition->option) {
+            case 1:
+                break;
+            case 2:
+                break;
+            case 3:
+                break;
+            case 4: // Chatroom message
+                // Create a server response
+                Chat__MessageCommunication msgCommSend = CHAT__MESSAGE_COMMUNICATION__INIT;
+                msgCommSend.sender = petition->messagecommunication->sender;
+                msgCommSend.recipient = petition->messagecommunication->recipient;
+                msgCommSend.message = petition->messagecommunication->message;
 
-    while(1) {
-        bzero(buffer, BUFFER_SIZE);
-        ssize_t message_len = recv(client->sockfd, buffer, BUFFER_SIZE, 0);
+                Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
+                serverResponse.option = 4;
+                serverResponse.messagecommunication = &msgCommSend;
 
-        // Verificar si el cliente se desconectó o si hubo un error en recv
-        if (message_len <= 0) {
-            if (message_len == 0) {
-                printf("Client %d disconnected\n", client->client_id);
-                //remove client 
-                for (int i = 0; i < MAX_CLIENTS; ++i) {
-                    if (clients[i] && clients[i]->client_id == client->client_id) {
-                        clients[i] = NULL;
-                        clients_connected--;
-                        break;
-                    }
-                }
-
-            } else {
-                perror("recv failed");
-            }
-            close(client->sockfd);
-            pthread_mutex_lock(&clients_mutex);
-            for (int i = 0; i < MAX_CLIENTS; i++) {
-                if (clients[i] && clients[i]->client_id == client->client_id) {
-                    clients[i] = NULL;
-                    clients_connected--;
+                size_t len = chat__server_response__get_packed_size(&serverResponse);
+                void *buffer = malloc(len);
+                if (buffer == NULL) {
+                    printf("Error assigning memory\n");
                     break;
                 }
-            }
-            pthread_mutex_unlock(&clients_mutex);
-            free(client);
-            return NULL;
+                chat__server_response__pack(&serverResponse, buffer);
+
+                printf("%s sent: %s\n", petition->messagecommunication->sender,
+                       petition->messagecommunication->message);
+
+                // Send the server response
+                send_to_all_clients(np, buffer, len);
+
+                // Free the buffer
+                free(buffer);
+                break;
         }
+    }
 
-        //manejar el menu de opciones
-        Chat__ClientPetition *clientPetition;
-        clientPetition = chat__client_petition__unpack(NULL, message_len, buffer);
-        if (clientPetition == NULL) {
-            fprintf(stderr, "Error unpacking incoming message.\n");
-            exit(1);
-        }
+    // Remove Node
+    close(np->data);  // Close the socket
 
-        printf("Received message length: %zd\n", message_len);
-
-        printf("Buffer contents: ");
-        for (int i = 0; i < message_len; ++i) {
-            printf("%02x ", (unsigned char)buffer[i]);
-        }
-        printf("\n");
-        //switch para manejar las opciones
-        switch (clientPetition->option)
-        {
-        case 1:
-            //Enviar mensaje a todos
-            
-            break;
-        case 2:
-            //listar usuarios
-            get_users_list(client);
-
-            break;
-        case 3:
-            //Cambiar status
-            change_user_status(client, clientPetition->change->status, clientPetition->change->username, 0);
-            break;
-        case 4:
-            if(strcmp(clientPetition->messagecommunication->recipient, "everyone") == 0){
-                broadcast(clientPetition->messagecommunication->message, client->client_id);
-            }else{
-                send_private_message(clientPetition->messagecommunication->message, client, clientPetition->messagecommunication->recipient);
-            }
-            break;
-        case 5:
-            get_user_info(client, clientPetition->users->user);
-            break;
-        default:
-            break;
-        }
-        chat__client_petition__free_unpacked(clientPetition, NULL);   
-
+    if (np == now) { // remove an edge node
+        now = np->prev;
+        now->link = NULL;
+    } else { // remove a middle node
+        np->prev->link = np->link;
+        np->link->prev = np->prev;
     }
 }
 
-
-
-int main(int argc, char *argv[]){
-    if(argc < 2){
+int main(int argc, char *argv[]) {
+    // Create the server with console args
+    if (argc < 2) {
         printf("Please provide a port number");
         printf("Usage: %s <port>\n", argv[0]);
         return -1;
     }
-
     int port = atoi(argv[1]);  // Convert the port number from string to integer
 
-    // Create the socket for the server
-    int sockfd;
-    struct sockaddr_in servaddr, cli;
+    signal(SIGINT, catch_exit);
 
-    // Socket Creation and Verification
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
-        printf("Socket creation failed...\n");
-        exit(0);
-    }
-    else
-        printf("Socket successfully created..\n");
-    bzero(&servaddr, sizeof(servaddr));
+    // Create socket
+    server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_sockfd == -1) {
+        printf("Fail to create a socket.");
+        exit(EXIT_FAILURE);
+    } else printf("Socket created!\n");
 
-    // Assign IP, PORT
-    servaddr.sin_family = AF_INET;  // IPv4
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);  // Accept any incoming IP
-    servaddr.sin_port = htons(port);  // Convert the port number (CLI arg) to network byte order
+    // Socket information
+    struct sockaddr_in server_info, client_info;
 
-    // Binding newly created socket to given IP and verification
-    if ((bind(sockfd, (SA*)&servaddr, sizeof(servaddr))) != 0) {
-        printf("Socket bind failed...\n");
-        exit(0);
-    }
-    else
-        printf("Socket successfully binded..\n");
+    int s_addrlen = sizeof(server_info);    // Server address length
+    int c_addrlen = sizeof(client_info);    // Client address length
 
-    // Now server is ready to listen and verification
-    if ((listen(sockfd, CONNECTION_REQUEST_BEFORE_REFUSAL)) != 0) {
-        printf("Listen failed...\n");
-        exit(0);
-    }
-    else
-        printf("Server listening..\n");
+    memset(&server_info, 0, s_addrlen); // Clear the server info
+    memset(&client_info, 0, c_addrlen); // Clear the client info
 
-    // From now, the socket has been set up and is listening for incoming connections
+    server_info.sin_family = PF_INET;           // Set the server family
+    server_info.sin_addr.s_addr = INADDR_ANY;   // Set the server address
+    server_info.sin_port = htons(port); // Set the server port (from the console args)
 
-    int continue_running = 1;
-    while(continue_running){
-        int connfd;
-        struct sockaddr_in cli;
-        int len2 = sizeof(cli);
-        // Listen for incoming connections
-        connfd = accept(sockfd, (SA*)&cli, &len2);
-        if (connfd < 0) {
-            printf("Server accept failed...\n");
-            exit(0);
-        }
-        else{  // Checks for available slots
-            if((clients_connected + 1) >= MAX_CLIENTS){
-                printf("Server refused the client... (Server's full)\n");
-                close(connfd);
-                continue;
-            }
-            printf("Server accepted the client...\n");
-        }
+    // Bind and Listen
+    if (bind(server_sockfd, (struct sockaddr *) &server_info, s_addrlen) == -1) {
+        printf("Fail to bind socket.");
+        exit(EXIT_FAILURE);
+    } else printf("Socket bound!\n");
 
-        // The user can now interact with the server
+    if (listen(server_sockfd, MAX_CLIENTS) == -1) {
+        printf("Fail to listen on socket.");
+        exit(EXIT_FAILURE);
+    } else printf("Listening on socket!\n");
 
-        // Declare a buffer to store the received data
-        void *buf = malloc(BUFFER_SIZE);
-        if (buf == NULL) {
-            fprintf(stderr, "Error allocating memory for the receive buffer.\n");
-            exit(1);
-        }
+    // Set the server IP
+    getsockname(server_sockfd, (struct sockaddr *) &server_info, (socklen_t * ) & s_addrlen);
+    printf("Server started on: %s:%d\n", inet_ntoa(server_info.sin_addr), ntohs(server_info.sin_port));
 
-        // Receive the data from the client
-        ssize_t len3 = recv(connfd, buf, BUFFER_SIZE, 0);
-        if (len3 == -1) {
-            perror("Receive failed");
+    // Initial linked list for clients
+    root = newNode(server_sockfd, inet_ntoa(server_info.sin_addr));
+    now = root;
+
+    while (1) {
+        client_sockfd = accept(server_sockfd, (struct sockaddr *) &client_info, (socklen_t * ) & c_addrlen);
+
+        // Print Client IP on the server
+        getpeername(client_sockfd, (struct sockaddr *) &client_info, (socklen_t * ) & c_addrlen);
+        printf("%s:%d | Client accepted.\n", inet_ntoa(client_info.sin_addr), ntohs(client_info.sin_port));
+
+        // Append linked list for clients
+        ClientList *c = newNode(client_sockfd, inet_ntoa(client_info.sin_addr));
+        c->prev = now;
+        now->link = c;
+        now = c;
+
+        pthread_t id;
+        if (pthread_create(&id, NULL, (void *) client_handler, (void *) c) != 0) {
+            perror("Create pthread error!\n");
             exit(EXIT_FAILURE);
         }
-
-        // Unpack the received data
-        Chat__ClientPetition *clientPetition;
-        clientPetition = chat__client_petition__unpack(NULL, len3, buf);
-        if (clientPetition == NULL) {
-            fprintf(stderr, "Error unpacking incoming message.\n");
-            exit(1);
-        }
-
-        // The server has received the data and unpacked it
-
-        client_struct *client = create_client_struct(cli, connfd, clients_connected, clock(), "activo", clientPetition->registration->username);
-
-        // Añadir el cliente a la lista de clientes
-        add_client(client);
-
-        // Crear un hilo para manejar al cliente
-        if(pthread_create(&client->thread_id, NULL, handle_client, (void*) client) != 0){
-            perror("Failed to create thread");
-        }
-
-        
-
-
-        // Free the unpacked message
-        chat__client_petition__free_unpacked(clientPetition, NULL);
-
-        // Free the buffer
-        free(buf);
     }
-    // Handle exit
-    close(sockfd);
+
     return 0;
 }
