@@ -17,7 +17,6 @@
 
 volatile bool exitChat = false;
 
-
 #define MAX 80
 #define PORT 8080
 #define SA struct sockaddr
@@ -152,9 +151,10 @@ void chat_all_users(char *username, int sockfd) {
         printf("> Enter your message (or type 'exit' to quit): ");
         char messageContent[BUFF_SIZE];
         fgets(messageContent, BUFF_SIZE, stdin);
-        messageContent[strcspn(messageContent, "\n")] = 0;
+        delete_lb(messageContent, BUFF_SIZE);
 
         if (strcmp(messageContent, "exit") == 0) {
+            pthread_cancel(receive_thread);
             exitChat = true;
             break;
         }
@@ -190,6 +190,7 @@ void chat_all_users(char *username, int sockfd) {
     } while (!exitChat);
 
     pthread_join(receive_thread, NULL);
+    exitChat = false;
 }
 
 void change_status(char *username, int sockfd) {
@@ -249,6 +250,55 @@ void change_status(char *username, int sockfd) {
     free(buf);
 
 }
+
+void receive_users_list(int sockfd) {
+    char recvBuff[BUFF_SIZE];
+    int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
+    if (n == -1) {
+        perror("Recv failed");
+        exit(EXIT_FAILURE);
+    }
+
+    Chat__ServerResponse *srv_res = chat__server_response__unpack(NULL, n, recvBuff);
+    if (srv_res == NULL) {
+        fprintf(stderr, "Error unpacking incoming message\n");
+        exit(1);
+    }
+
+    if (srv_res->option == 2 && srv_res->connectedusers != NULL) {
+        printf("Connected users:\n");
+        for (int i = 0; i < srv_res->connectedusers->n_connectedusers; i++) {
+            printf("- %s (%s)\n", srv_res->connectedusers->connectedusers[i]->username, srv_res->connectedusers->connectedusers[i]->status);
+        }
+    }
+
+    chat__server_response__free_unpacked(srv_res, NULL);
+}
+
+void list_connected_users(int sockfd) {
+    Chat__ClientPetition cli_ptn = CHAT__CLIENT_PETITION__INIT;
+    Chat__UserRequest usr_rqst = CHAT__USER_REQUEST__INIT;
+
+    void *buf;                                                          
+    unsigned len;                                                       
+    
+    cli_ptn.option = 2;
+    cli_ptn.users = &usr_rqst;
+
+    len = chat__client_petition__get_packed_size(&cli_ptn);
+    buf = malloc(len);
+
+    chat__client_petition__pack (&cli_ptn, buf);
+
+    if (send(sockfd, buf, len, 0) == -1) {
+        perror("Send failed");
+        exit(EXIT_FAILURE);
+    }
+
+    free(buf);
+    receive_users_list(sockfd);
+}
+
 
 
 int main(int argc, char *argv[]){
@@ -358,6 +408,7 @@ int main(int argc, char *argv[]){
                 change_status(username, sockfd);
                 break;
             case 4: // List Connected Users
+                list_connected_users(sockfd);
 
                 break;
             case 5: // User Info
