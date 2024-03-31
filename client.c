@@ -298,7 +298,7 @@ void user_info(int sockfd) {
 /**
  * Handles the sending of messages to the server. Sends a message in the protocol format. chat__client_petition
  */
-void send_dm_handler(char *user_to_write){
+void send_dm_handler(char *user_to_write) {
     char message[LENGTH_MSG] = {};  // Buffer to store the message
 
     // Detach the current thread
@@ -427,6 +427,32 @@ int main(int argc, char *argv[]) {
             case 1: // Join Chatroom
                 // Reset the exit_flag
                 exit_flag = 0;
+
+                // Pack the message
+                Chat__MessageCommunication msgComm = CHAT__MESSAGE_COMMUNICATION__INIT;
+                char message[LENGTH_MSG];
+                snprintf(message, LENGTH_MSG, "%s has joined the chatroom", username);
+                msgComm.message = message;
+                msgComm.recipient = "everyone";
+                msgComm.sender = "Server";
+
+                Chat__ClientPetition petition = CHAT__CLIENT_PETITION__INIT;
+                petition.option = 4;
+                petition.messagecommunication = &msgComm;
+
+                size_t len = chat__client_petition__get_packed_size(&petition);
+                void *buffer = malloc(len);
+                if (buffer == NULL) {
+                    printf("Error assigning memory\n");
+                    break;
+                }
+                chat__client_petition__pack(&petition, buffer);
+
+                // Send the message. If it wants to leave the chatroom, notify the server by sending "exit"
+                if (send(sockfd, buffer, len, 0) < 0) {
+                    printf("Error sending the message to the server\n");
+                    break;
+                }
 
                 // Create threads for sending and receiving messages
                 pthread_t send_msg_thread, recv_msg_thread;
