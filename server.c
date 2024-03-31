@@ -52,15 +52,18 @@ void send_to_all_clients(ClientList *np, void *buffer, size_t len) {
     }
 }
 
+/**
+ * Sends a protocol message that represents the list of connected users
+ * @param np The client that requested the list
+ */
 void send_users_list(ClientList *np) {
-    printf("Sending user list to %s (%s)\n", np->name, np->status);
+    printf("Sending user list to %s\n", np->name);
 
-    Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
-    Chat__ConnectedUsersResponse connected_users = CHAT__CONNECTED_USERS_RESPONSE__INIT;
-    Chat__UserInfo **users = malloc(sizeof(Chat__UserInfo *) * MAX_CLIENTS);
+    Chat__UserInfo **users = malloc(sizeof(Chat__UserInfo *) * MAX_CLIENTS);  // Array of users
     ClientList *tmp = root->link;
     int j = 0;
-    // print tmp status
+
+    // Iterate over the linked list of clients
     while (tmp != NULL) {
         Chat__UserInfo *user = malloc(sizeof(Chat__UserInfo));
         chat__user_info__init(user);
@@ -71,16 +74,26 @@ void send_users_list(ClientList *np) {
         tmp = tmp->link;
     }
 
+    // Create the protocol message
+    Chat__ConnectedUsersResponse connected_users = CHAT__CONNECTED_USERS_RESPONSE__INIT;
     connected_users.n_connectedusers = j;
     connected_users.connectedusers = users;
+
+    // Create the server response
+    Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
     srv_res.option = 2;
     srv_res.connectedusers = &connected_users;
+
     void *buf;
     unsigned len;
     len = chat__server_response__get_packed_size(&srv_res);
     buf = malloc(len);
     chat__server_response__pack(&srv_res, buf);
+
+    // Send the server response
     send(np->data, buf, len, 0);
+
+    // Free the buffer
     free(buf);
     free(users);
 }
