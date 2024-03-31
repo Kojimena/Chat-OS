@@ -57,8 +57,8 @@ void recv_msg_handler() {
                 printf("\r%s | %s\n", serverResponse->messagecommunication->sender,
                        serverResponse->messagecommunication->message);
             } else {
-                // If the message is private, print on red color
-                printf("\033[0;31m\r%s | %s\n\033[0m", serverResponse->messagecommunication->sender,
+                // If the message is private, print on blue color
+                printf("\033[0;34m\r%s | %s\n\033[0m", serverResponse->messagecommunication->sender,
                        serverResponse->messagecommunication->message);
             }
         } else {
