@@ -185,7 +185,7 @@ void change_status() {
         exit(1);
     }
 
-    if (srv_res->option == 3 && srv_res->change->status != NULL) {
+    if (srv_res->option == 3 && srv_res->code == 200) {
         printf("Status changed to: %s\n", srv_res->change->status);
     }
 
@@ -293,6 +293,8 @@ void user_info(int sockfd) {
         printf("- Status: %s\n", srv_res->userinforesponse->status);
     }
 
+    chat__server_response__free_unpacked(srv_res, NULL);
+    return;
 }
 
 /**

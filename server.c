@@ -80,6 +80,7 @@ void send_users_list(ClientList *np) {
     Chat__ServerResponse srv_res = CHAT__SERVER_RESPONSE__INIT;
     srv_res.option = 2;
     srv_res.connectedusers = &connected_users;
+    srv_res.code = 200;
 
     void *buf;
     unsigned len;
@@ -160,6 +161,7 @@ void client_handler(void *p_client) {
                     Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
                     serverResponse.option = 4;
                     serverResponse.messagecommunication = &messageCommunication;
+                    serverResponse.code = 200;
 
                     size_t len = chat__server_response__get_packed_size(&serverResponse);
                     void *buffer = malloc(len);
@@ -186,7 +188,7 @@ void client_handler(void *p_client) {
 
                     Chat__ServerResponse errorResponse = CHAT__SERVER_RESPONSE__INIT;
                     errorResponse.option = 1;
-                    errorResponse.code = 404;
+                    errorResponse.code = 500;
                     errorResponse.messagecommunication = &privateMessage;
 
                     size_t len = chat__server_response__get_packed_size(&errorResponse);
@@ -214,7 +216,7 @@ void client_handler(void *p_client) {
 
                     Chat__ServerResponse errorResponse = CHAT__SERVER_RESPONSE__INIT;
                     errorResponse.option = 1;
-                    errorResponse.code = 404;
+                    errorResponse.code = 500;
                     errorResponse.messagecommunication = &privateMessage;
 
                     size_t len = chat__server_response__get_packed_size(&errorResponse);
@@ -248,6 +250,7 @@ void client_handler(void *p_client) {
                 Chat__ServerResponse responseServerResponse = CHAT__SERVER_RESPONSE__INIT;
                 responseServerResponse.option = 3;
                 responseServerResponse.change = &changeStatusResponse;
+                responseServerResponse.code = 200;
 
                 size_t len = chat__server_response__get_packed_size(&responseServerResponse);
                 void *buffer = malloc(len);
@@ -282,6 +285,7 @@ void client_handler(void *p_client) {
                     Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
                     serverResponse.option = 4;
                     serverResponse.messagecommunication = &msgCommSend;
+                    serverResponse.code = 200;
 
                     size_t len = chat__server_response__get_packed_size(&serverResponse);
                     void *buffer = malloc(len);
@@ -341,7 +345,7 @@ void client_handler(void *p_client) {
                     userInfoResponse.username = "Is not connected";
                     userInfoResponse.status = "Unreachable";
 
-                    serverInfoResponse.code = 404;
+                    serverInfoResponse.code = 500;
                 }
 
                 serverInfoResponse.option = 5;
