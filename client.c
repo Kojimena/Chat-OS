@@ -190,9 +190,6 @@ void change_status(){
     }
 
     chat__server_response__free_unpacked(srv_res, NULL);
-
-
-
     return;
 }
 
@@ -245,6 +242,56 @@ void list_connected_users(int sockfd) {
 
     free(buf);
     receive_users_list(sockfd);
+}
+
+void user_info(int sockfd) {
+    char user_to_find[USERNAME_SIZE];
+    printf("Enter the username to get the information: ");
+    scanf("%s", user_to_find);
+
+    Chat__UserRequest user_request = CHAT__USER_REQUEST__INIT;
+    user_request.user = user_to_find;
+
+    Chat__ClientPetition client_petition = CHAT__CLIENT_PETITION__INIT;
+    client_petition.option = 5;
+    client_petition.users = &user_request;
+
+    size_t len = chat__client_petition__get_packed_size(&client_petition);
+    void *buffer = malloc(len);
+    if (buffer == NULL) {
+        printf("Error assigning memory\n");
+        return;
+    }
+
+    chat__client_petition__pack(&client_petition, buffer);
+
+    if (send(sockfd, buffer, len, 0) < 0) {
+        printf("Error sending user info petition to the server\n");
+        return;
+    }
+
+    free(buffer);
+
+    // Wait for the server response of the user info
+    char recvBuff[BUFF_SIZE];
+    int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
+    if (n == -1) {
+        perror("Recv failed");
+        exit(EXIT_FAILURE);
+    }
+
+    Chat__ServerResponse *srv_res = chat__server_response__unpack(NULL, n, recvBuff);
+    if (srv_res == NULL) {
+        fprintf(stderr, "Error unpacking incoming message\n");
+        exit(1);
+    }
+
+    if (srv_res->option == 5 && srv_res->userinforesponse != NULL) {
+        printf("User info:\n");
+        printf("- Username: %s\n", srv_res->userinforesponse->username);
+        printf("- Status: %s\n", srv_res->userinforesponse->status);
+    }
+
 }
 
 
@@ -347,6 +394,7 @@ int main(int argc, char *argv[]) {
                 break;
             case 5:
                 // Show User Info
+                user_info(sockfd);
                 break;
             case 6:
                 // Help

@@ -138,8 +138,7 @@ void client_handler(void *p_client) {
         switch (petition->option) {
             case 1:
                 break;
-            case 2:
-                //Getr user list, send the root of the list
+            case 2: // Get users list
                 send_users_list(np);
                 break;
             case 3: // Change user status
@@ -150,17 +149,17 @@ void client_handler(void *p_client) {
                 changeStatusResponse.username = np->name;
                 changeStatusResponse.status = np->status;
 
-                Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
-                serverResponse.option = 3;
-                serverResponse.change = &changeStatusResponse;
+                Chat__ServerResponse responseServerResponse = CHAT__SERVER_RESPONSE__INIT;
+                responseServerResponse.option = 3;
+                responseServerResponse.change = &changeStatusResponse;
 
-                size_t len = chat__server_response__get_packed_size(&serverResponse);
+                size_t len = chat__server_response__get_packed_size(&responseServerResponse);
                 void *buffer = malloc(len);
                 if (buffer == NULL) {
                     printf("Error assigning memory\n");
                     break;
                 }
-                chat__server_response__pack(&serverResponse, buffer);
+                chat__server_response__pack(&responseServerResponse, buffer);
 
                 // Send the server response to the client
                 send(np->data, buffer, len, 0);
@@ -169,7 +168,6 @@ void client_handler(void *p_client) {
 
                 // Free the buffer
                 free(buffer);
-
                 break;
             case 4: // Chatroom message
                 int leave_flag = 0;
@@ -223,6 +221,48 @@ void client_handler(void *p_client) {
                     // Loop with the new petition
                 }
                 break;  // End of case 4
+            case 5: // Get user info
+                printf("%s requested user info: %s\n", np->name, petition->users->user);
+
+                // Find in the linked list the user with the requested username
+                ClientList *tmp = root->link;
+                while (tmp != NULL) {
+                    if (strcmp(tmp->name, petition->users->user) == 0) {   // Found the user
+                        break;
+                    }
+                    tmp = tmp->link;
+                }
+
+                // Create a server response
+                Chat__UserInfo userInfoResponse = CHAT__USER_INFO__INIT;
+                userInfoResponse.username = tmp->name;
+                userInfoResponse.status = tmp->status;
+
+                // If not found, send an error message
+                if (tmp == NULL) {
+                    userInfoResponse.username = "Is not connected";
+                    userInfoResponse.status = "Unreachable";
+                }
+
+                Chat__ServerResponse serverInfoResponse = CHAT__SERVER_RESPONSE__INIT;
+                serverInfoResponse.option = 5;
+                serverInfoResponse.userinforesponse = &userInfoResponse;
+
+                size_t info_len = chat__server_response__get_packed_size(&serverInfoResponse);
+                void *info_buffer = malloc(info_len);
+                if (info_buffer == NULL) {
+                    printf("Error assigning memory\n");
+                    break;
+                }
+                chat__server_response__pack(&serverInfoResponse, info_buffer);
+
+                // Send the server response to the client
+                send(np->data, info_buffer, info_len, 0);
+
+                // Free the buffer
+                free(info_buffer);
+
+                break;
             default:
                 break;
         }
