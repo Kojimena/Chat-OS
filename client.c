@@ -52,8 +52,15 @@ void recv_msg_handler() {
 
         // Print the message
         if(serverResponse->code == 200) {
-            printf("\r%s | %s\n", serverResponse->messagecommunication->sender,
-               serverResponse->messagecommunication->message);
+            // If the message is public, print on default color
+            if (strcmp(serverResponse->messagecommunication->recipient, "everyone") == 0) {
+                printf("\r%s | %s\n", serverResponse->messagecommunication->sender,
+                       serverResponse->messagecommunication->message);
+            } else {
+                // If the message is private, print on red color
+                printf("\033[0;31m\r%s | %s\n\033[0m", serverResponse->messagecommunication->sender,
+                       serverResponse->messagecommunication->message);
+            }
         } else {
             printf("Error code: %d\n", serverResponse->code);
         }
