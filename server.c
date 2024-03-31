@@ -112,6 +112,10 @@ void client_handler(void *p_client) {
     // Set the username
     strncpy(np->name, username, USERNAME_SIZE);
 
+    if (np->status != NULL) {
+        strcpy(np->status, "activo");
+    }
+
     // Petition loop
     while (1) {
         // Wait for a petition
@@ -172,7 +176,7 @@ void client_handler(void *p_client) {
                     free(buffer);
 
                     printf("%s sent a DM to %s: %s\n", sender, recipient, message);
-                } else if { // Avoid a chat with itself
+                } else if (strcmp(sender, recipient) == 0) { // If the recipient is the sender, send an error message back to the sender
                     char errorMsg[] = "Error: You can't start a private chat with yourself.\n";
 
                     Chat__MessageCommunication privateMessage = CHAT__MESSAGE_COMMUNICATION__INIT;
