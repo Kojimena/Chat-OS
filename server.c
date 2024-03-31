@@ -136,7 +136,74 @@ void client_handler(void *p_client) {
         }
 
         switch (petition->option) {
-            case 1:
+            case 1: // Private message
+                char *recipient = petition->messagecommunication->recipient;
+                char *message = petition->messagecommunication->message;
+                char *sender = petition->messagecommunication->sender;
+
+                // Find the recipient in the list of connected clients
+                ClientList *tmp_dm;
+                for (tmp_dm = root; tmp_dm != NULL; tmp_dm = tmp_dm->link) {
+                    if (strcmp(tmp_dm->name, recipient) == 0) {
+                        break;
+                    }
+                }
+
+                // If the recipient is found, forward the message to them
+                if (tmp_dm != NULL) {
+                    Chat__MessageCommunication messageCommunication = CHAT__MESSAGE_COMMUNICATION__INIT;
+                    messageCommunication.sender = sender;
+                    messageCommunication.recipient = recipient;
+                    messageCommunication.message = message;
+
+                    Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
+                    serverResponse.option = 4;
+                    serverResponse.messagecommunication = &messageCommunication;
+
+                    size_t len = chat__server_response__get_packed_size(&serverResponse);
+                    void *buffer = malloc(len);
+                    if (buffer == NULL) {
+                        printf("Error assigning memory\n");
+                        break;
+                    }
+                    chat__server_response__pack(&serverResponse, buffer);
+
+                    // Send the server response to the recipient
+                    send(tmp_dm->data, buffer, len, 0);
+
+                    // Free the buffer
+                    free(buffer);
+
+                    printf("%s sent a DM to %s: %s\n", sender, recipient, message);
+                } else { // If the recipient is not found, send an error message back to the sender
+                    char errorMsg[] = "Error: The user you are trying to reach is not connected.\n";
+
+                    Chat__MessageCommunication privateMessage = CHAT__MESSAGE_COMMUNICATION__INIT;
+                    privateMessage.sender = "Server";
+                    privateMessage.recipient = sender;
+                    privateMessage.message = errorMsg;
+
+                    Chat__ServerResponse errorResponse = CHAT__SERVER_RESPONSE__INIT;
+                    errorResponse.option = 1;
+                    errorResponse.code = 404;
+                    errorResponse.messagecommunication = &privateMessage;
+
+                    size_t len = chat__server_response__get_packed_size(&errorResponse);
+                    void *buffer = malloc(len);
+                    if (buffer == NULL) {
+                        printf("Error assigning memory\n");
+                        break;
+                    }
+                    chat__server_response__pack(&errorResponse, buffer);
+
+                    // Send the server response to the client
+                    send(np->data, buffer, len, 0);
+
+                    // Free the buffer
+                    free(buffer);
+
+                    printf("Error: %s tried to reach %s, but the user is not connected.\n", sender, recipient);
+                }
                 break;
             case 2: // Get users list
                 send_users_list(np);
@@ -235,6 +302,8 @@ void client_handler(void *p_client) {
 
                 // Create a server response
                 Chat__UserInfo userInfoResponse = CHAT__USER_INFO__INIT;
+                Chat__ServerResponse serverInfoResponse = CHAT__SERVER_RESPONSE__INIT;
+
                 userInfoResponse.username = tmp->name;
                 userInfoResponse.status = tmp->status;
 
@@ -242,10 +311,12 @@ void client_handler(void *p_client) {
                 if (tmp == NULL) {
                     userInfoResponse.username = "Is not connected";
                     userInfoResponse.status = "Unreachable";
+
+                    serverInfoResponse.code = 404;
                 }
 
-                Chat__ServerResponse serverInfoResponse = CHAT__SERVER_RESPONSE__INIT;
                 serverInfoResponse.option = 5;
+                serverInfoResponse.code = 200;
                 serverInfoResponse.userinforesponse = &userInfoResponse;
 
                 size_t info_len = chat__server_response__get_packed_size(&serverInfoResponse);

@@ -124,7 +124,7 @@ void send_msg_handler() {
 }
 
 
-void change_status(){
+void change_status() {
     int option = 1;
     char *status;
     printf("1. Activo\n");
@@ -132,7 +132,7 @@ void change_status(){
     printf("3. Inactivo\n");
     scanf("%d", &option);
 
-    switch(option){
+    switch (option) {
         case 1:
             status = "activo";
             break;
@@ -211,7 +211,8 @@ void receive_users_list(int sockfd) {
     if (srv_res->option == 2 && srv_res->connectedusers != NULL) {
         printf("Connected users:\n");
         for (int i = 0; i < srv_res->connectedusers->n_connectedusers; i++) {
-            printf("- %s (%s)\n", srv_res->connectedusers->connectedusers[i]->username, srv_res->connectedusers->connectedusers[i]->status);
+            printf("- %s (%s)\n", srv_res->connectedusers->connectedusers[i]->username,
+                   srv_res->connectedusers->connectedusers[i]->status);
         }
     }
 
@@ -222,18 +223,18 @@ void list_connected_users(int sockfd) {
     Chat__ClientPetition cli_ptn = CHAT__CLIENT_PETITION__INIT;
     Chat__UserRequest usr_rqst = CHAT__USER_REQUEST__INIT;
 
-    void *buf;                                                          
-    unsigned len; 
+    void *buf;
+    unsigned len;
 
-    usr_rqst.user = "everyone";                                                      
-    
+    usr_rqst.user = "everyone";
+
     cli_ptn.option = 2;
     cli_ptn.users = &usr_rqst;
 
     len = chat__client_petition__get_packed_size(&cli_ptn);
     buf = malloc(len);
 
-    chat__client_petition__pack (&cli_ptn, buf);
+    chat__client_petition__pack(&cli_ptn, buf);
 
     if (send(sockfd, buf, len, 0) == -1) {
         perror("Send failed");
@@ -292,6 +293,66 @@ void user_info(int sockfd) {
         printf("- Status: %s\n", srv_res->userinforesponse->status);
     }
 
+}
+
+/**
+ * Handles the sending of messages to the server. Sends a message in the protocol format. chat__client_petition
+ */
+void send_dm_handler(char *user_to_write){
+    char message[LENGTH_MSG] = {};  // Buffer to store the message
+
+    // Detach the current thread
+    pthread_detach(pthread_self());
+
+    while (!exit_flag) {
+        str_overwrite_stdout();
+        while (fgets(message, LENGTH_MSG, stdin) != NULL) { // Read the message
+            str_trim_lf(message, LENGTH_MSG);  // Remove \n
+            if (strlen(message) == 0) { // If the message is empty
+                str_overwrite_stdout();
+            } else {    // Proceed to send the message
+                break;
+            }
+        }
+
+        // Pack the message
+        Chat__MessageCommunication msgComm = CHAT__MESSAGE_COMMUNICATION__INIT;
+        msgComm.message = message;
+        msgComm.recipient = user_to_write;
+        msgComm.sender = username;
+
+        Chat__ClientPetition petition = CHAT__CLIENT_PETITION__INIT;
+        petition.option = 1;
+        petition.messagecommunication = &msgComm;
+
+        size_t len = chat__client_petition__get_packed_size(&petition);
+        void *buffer = malloc(len);
+        if (buffer == NULL) {
+            printf("Error assigning memory\n");
+            break;
+        }
+        chat__client_petition__pack(&petition, buffer);
+
+        // Send the message. If it wants to leave the chatroom, notify the server by sending "exit"
+        if (send(sockfd, buffer, len, 0) < 0) {
+            printf("Error sending the message to the server\n");
+            break;
+        }
+
+        // If the message is "exit", leave the chatroom client side
+        if (strcmp(message, "exit") == 0) {
+            printf("Leaving private chat\n");
+            exit_flag = 1;  // Set the flag to signal threads to exit
+            pthread_exit(0);  // Terminate the current thread
+        }
+
+        // Free the buffer
+        free(buffer);
+        if (exit_flag) {
+            break;
+        }
+    }
+    pthread_exit(0);
 }
 
 
@@ -383,8 +444,29 @@ int main(int argc, char *argv[]) {
                 pthread_cancel(recv_msg_thread);
 
                 break;
-            case 2:
-                // Private Chat
+            case 2: // Private Chat
+                // Reset the exit_flag
+                exit_flag = 0;
+
+                char recipient[USERNAME_SIZE];
+                printf("Enter the username of the recipient: ");
+                scanf("%s", recipient);
+
+                // Create threads for sending and receiving messages
+                pthread_t send_dm_thread, recv_dm_thread;
+                if (pthread_create(&send_dm_thread, NULL, (void *) send_dm_handler, recipient) != 0 ||
+                    pthread_create(&recv_dm_thread, NULL, (void *) recv_msg_handler, NULL) != 0) {
+                    printf("Error creating threads.\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                while (!exit_flag) {
+                    sleep(1);
+                }
+
+                pthread_cancel(send_msg_thread);
+                pthread_cancel(recv_msg_thread);
+
                 break;
             case 3: // Change Status
                 change_status();
