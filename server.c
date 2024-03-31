@@ -17,6 +17,12 @@
 int server_sockfd = 0, client_sockfd = 0;
 ClientList *root, *now;
 
+pthread_mutex_t mutex_chatroom = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_privateChat = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_status_change = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_user_info = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_listInfo = PTHREAD_MUTEX_INITIALIZER;
+
 /**
  * Signal handler for SIGINT
  * Handles the exit of the server
@@ -104,6 +110,15 @@ void send_users_list(ClientList *np) {
  * @param p_client
  */
 void client_handler(void *p_client) {
+    // Mutex init
+    pthread_mutex_init(
+            &mutex_chatroom, NULL);
+    pthread_mutex_init(&mutex_privateChat, NULL);
+    pthread_mutex_init(&mutex_status_change, NULL);
+    pthread_mutex_init(&mutex_user_info, NULL);
+    pthread_mutex_init(&mutex_listInfo, NULL);
+
+
     char username[USERNAME_SIZE] = {};
     char recv_buffer[LENGTH_MSG] = {};
     ClientList *np = (ClientList *) p_client;
@@ -138,108 +153,15 @@ void client_handler(void *p_client) {
         }
 
         switch (petition->option) {
-            case 1: // Private message
-                char *recipient = petition->messagecommunication->recipient;
-                char *message = petition->messagecommunication->message;
-                char *sender = petition->messagecommunication->sender;
-
-                // Find the recipient in the list of connected clients
-                ClientList *tmp_dm;
-                for (tmp_dm = root; tmp_dm != NULL; tmp_dm = tmp_dm->link) {
-                    if (strcmp(tmp_dm->name, recipient) == 0) {
-                        break;
-                    }
-                }
-
-                // If the recipient is found, forward the message to them
-                if (tmp_dm != NULL) {
-                    Chat__MessageCommunication messageCommunication = CHAT__MESSAGE_COMMUNICATION__INIT;
-                    messageCommunication.sender = sender;
-                    messageCommunication.recipient = recipient;
-                    messageCommunication.message = message;
-
-                    Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
-                    serverResponse.option = 4;
-                    serverResponse.messagecommunication = &messageCommunication;
-                    serverResponse.code = 200;
-
-                    size_t len = chat__server_response__get_packed_size(&serverResponse);
-                    void *buffer = malloc(len);
-                    if (buffer == NULL) {
-                        printf("Error assigning memory\n");
-                        break;
-                    }
-                    chat__server_response__pack(&serverResponse, buffer);
-
-                    // Send the server response to the recipient
-                    send(tmp_dm->data, buffer, len, 0);
-
-                    // Free the buffer
-                    free(buffer);
-
-                    printf("%s sent a DM to %s: %s\n", sender, recipient, message);
-                } else if (strcmp(sender, recipient) == 0) { // If the recipient is the sender, send an error message back to the sender
-                    char errorMsg[] = "Error: You can't start a private chat with yourself.\n";
-
-                    Chat__MessageCommunication privateMessage = CHAT__MESSAGE_COMMUNICATION__INIT;
-                    privateMessage.sender = "Server";
-                    privateMessage.recipient = sender;
-                    privateMessage.message = errorMsg;
-
-                    Chat__ServerResponse errorResponse = CHAT__SERVER_RESPONSE__INIT;
-                    errorResponse.option = 1;
-                    errorResponse.code = 500;
-                    errorResponse.messagecommunication = &privateMessage;
-
-                    size_t len = chat__server_response__get_packed_size(&errorResponse);
-                    void *buffer = malloc(len);
-                    if (buffer == NULL) {
-                        printf("Error assigning memory\n");
-                        break;
-                    }
-                    chat__server_response__pack(&errorResponse, buffer);
-
-                    // Send the server response to the client
-                    send(np->data, buffer, len, 0);
-
-                    // Free the buffer
-                    free(buffer);
-
-                    printf("Error: %s tried to reach %s, but the user is not connected.\n", sender, recipient);
-                } else { // If the recipient is not found, send an error message back to the sender
-                    char errorMsg[] = "Error: The user you are trying to reach is not connected.\n";
-
-                    Chat__MessageCommunication privateMessage = CHAT__MESSAGE_COMMUNICATION__INIT;
-                    privateMessage.sender = "Server";
-                    privateMessage.recipient = sender;
-                    privateMessage.message = errorMsg;
-
-                    Chat__ServerResponse errorResponse = CHAT__SERVER_RESPONSE__INIT;
-                    errorResponse.option = 1;
-                    errorResponse.code = 500;
-                    errorResponse.messagecommunication = &privateMessage;
-
-                    size_t len = chat__server_response__get_packed_size(&errorResponse);
-                    void *buffer = malloc(len);
-                    if (buffer == NULL) {
-                        printf("Error assigning memory\n");
-                        break;
-                    }
-                    chat__server_response__pack(&errorResponse, buffer);
-
-                    // Send the server response to the client
-                    send(np->data, buffer, len, 0);
-
-                    // Free the buffer
-                    free(buffer);
-
-                    printf("Error: %s tried to reach %s, but the user is not connected.\n", sender, recipient);
-                }
+            case 1: // New User ?
                 break;
             case 2: // Get users list
+                pthread_mutex_lock(&mutex_listInfo);
                 send_users_list(np);
+                pthread_mutex_unlock(&mutex_listInfo);
                 break;
             case 3: // Change user status
+                pthread_mutex_lock(&mutex_status_change);
                 strcpy(np->status, petition->change->status);
 
                 // Create a server response
@@ -267,61 +189,116 @@ void client_handler(void *p_client) {
                 free(buffer);
 
                 printf("%s changed status to %s\n", np->name, np->status);
+                pthread_mutex_unlock(&mutex_status_change);
                 break;
-            case 4: // Chatroom message
+            case 4: // Messaging (chatroom or private chat)
                 int leave_flag = 0;
                 while (!leave_flag) {  // Chat loop
                     // Check if the message is 'exit'
                     if (strcmp(petition->messagecommunication->message, "exit") == 0) {
                         leave_flag = 1;
-                    }
-
-                    // Create a server response
-                    Chat__MessageCommunication msgCommSend = CHAT__MESSAGE_COMMUNICATION__INIT;
-                    msgCommSend.sender = petition->messagecommunication->sender;
-                    msgCommSend.recipient = petition->messagecommunication->recipient;
-                    msgCommSend.message = petition->messagecommunication->message;
-
-                    Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
-                    serverResponse.option = 4;
-                    serverResponse.messagecommunication = &msgCommSend;
-                    serverResponse.code = 200;
-
-                    size_t len = chat__server_response__get_packed_size(&serverResponse);
-                    void *buffer = malloc(len);
-                    if (buffer == NULL) {
-                        printf("Error assigning memory\n");
-                        break;
-                    }
-                    chat__server_response__pack(&serverResponse, buffer);
-
-                    // Send the server response
-                    send_to_all_clients(np, buffer, len);
-
-                    // Free the buffer
-                    free(buffer);
-
-                    printf("%s sent in chatroom: %s\n", petition->messagecommunication->sender,
-                           petition->messagecommunication->message);
-
-                    // Receive the next petition
-                    receive = recv(np->data, recv_buffer, LENGTH_MSG, 0);
-                    if (receive < 0) {
-                        printf("ERROR RECEIVING PETITION (next petition)\n");
                         break;
                     }
 
-                    // Unpack the received petition
-                    petition = chat__client_petition__unpack(NULL, receive, recv_buffer);
-                    if (petition == NULL) {
-                        printf("Error unpacking message.\n");
-                        break;
-                    }
+                    if(strcmp(petition->messagecommunication->recipient, "everyone") == 0) {
+                            // Create a server response
+                        Chat__MessageCommunication msgCommSend = CHAT__MESSAGE_COMMUNICATION__INIT;
+                        msgCommSend.sender = petition->messagecommunication->sender;
+                        msgCommSend.recipient = petition->messagecommunication->recipient;
+                        msgCommSend.message = petition->messagecommunication->message;
 
+                        Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
+                        serverResponse.option = 4;
+                        serverResponse.messagecommunication = &msgCommSend;
+                        serverResponse.code = 200;
+
+                        size_t len = chat__server_response__get_packed_size(&serverResponse);
+                        void *buffer = malloc(len);
+                        if (buffer == NULL) {
+                            printf("Error assigning memory\n");
+                            break;
+                        }
+                        chat__server_response__pack(&serverResponse, buffer);
+
+                        // Send the server response
+                        send_to_all_clients(np, buffer, len);
+
+                        // Free the buffer
+                        free(buffer);
+
+                        printf("%s sent in chatroom: %s\n", petition->messagecommunication->sender,
+                            petition->messagecommunication->message);
+
+                        // Receive the next petition
+                        receive = recv(np->data, recv_buffer, LENGTH_MSG, 0);
+                        if (receive < 0) {
+                            printf("ERROR RECEIVING PETITION (next petition)\n");
+                            break;
+                        }
+
+                        // Unpack the received petition
+                        petition = chat__client_petition__unpack(NULL, receive, recv_buffer);
+                        if (petition == NULL) {
+                            printf("Error unpacking message.\n");
+                            break;
+                        }
+                    } else { // Private chat
+                        // Find the recipient in the linked list
+                        ClientList *tmp = root->link;
+                        while (tmp != NULL) {
+                            if (strcmp(tmp->name, petition->messagecommunication->recipient) == 0) {
+                                break;
+                            }
+                            tmp = tmp->link;
+                        }
+
+                        // Create a server response
+                        Chat__MessageCommunication msgCommSend = CHAT__MESSAGE_COMMUNICATION__INIT;
+                        msgCommSend.sender = petition->messagecommunication->sender;
+                        msgCommSend.recipient = petition->messagecommunication->recipient;
+                        msgCommSend.message = petition->messagecommunication->message;
+
+                        Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
+                        serverResponse.option = 4;
+                        serverResponse.messagecommunication = &msgCommSend;
+                        serverResponse.code = 200;
+
+                        size_t len = chat__server_response__get_packed_size(&serverResponse);
+                        void *buffer = malloc(len);
+                        if (buffer == NULL) {
+                            printf("Error assigning memory\n");
+                            break;
+                        }
+                        chat__server_response__pack(&serverResponse, buffer);
+
+                        // Send the server response to the recipient
+                        send(tmp->data, buffer, len, 0);
+
+                        // Free the buffer
+                        free(buffer);
+
+                        printf("%s sent to %s: %s\n", petition->messagecommunication->sender,
+                               petition->messagecommunication->recipient, petition->messagecommunication->message);
+
+                        // Receive the next petition
+                        receive = recv(np->data, recv_buffer, LENGTH_MSG, 0);
+                        if (receive < 0) {
+                            printf("ERROR RECEIVING PETITION (next petition)\n");
+                            break;
+                        }
+
+                        // Unpack the received petition
+                        petition = chat__client_petition__unpack(NULL, receive, recv_buffer);
+                        if (petition == NULL) {
+                            printf("Error unpacking message.\n");
+                            break;
+                        }
+                    }
                     // Loop with the new petition
                 }
                 break;  // End of case 4
             case 5: // Get user info
+                pthread_mutex_lock(&mutex_user_info);
                 printf("%s requested info of %s\n", np->name, petition->users->user);
 
                 // Find in the linked list the user with the requested username
@@ -365,7 +342,7 @@ void client_handler(void *p_client) {
 
                 // Free the buffer
                 free(info_buffer);
-
+                pthread_mutex_unlock(&mutex_user_info);
                 break;
             default:
                 break;
