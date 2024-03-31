@@ -171,6 +171,28 @@ void change_status(){
 
     free(buffer);
 
+    // Wait for the server response of the status change
+    char recvBuff[BUFF_SIZE];
+    int n = recv(sockfd, recvBuff, BUFF_SIZE, 0);
+    if (n == -1) {
+        perror("Recv failed");
+        exit(EXIT_FAILURE);
+    }
+
+    Chat__ServerResponse *srv_res = chat__server_response__unpack(NULL, n, recvBuff);
+    if (srv_res == NULL) {
+        fprintf(stderr, "Error unpacking incoming message\n");
+        exit(1);
+    }
+
+    if (srv_res->option == 3 && srv_res->change->status != NULL) {
+        printf("Status changed to: %s\n", srv_res->change->status);
+    }
+
+    chat__server_response__free_unpacked(srv_res, NULL);
+
+
+
     return;
 }
 

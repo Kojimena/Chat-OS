@@ -112,7 +112,7 @@ void client_handler(void *p_client) {
     recv(np->data, username, USERNAME_SIZE, 0);
     // Set the username
     strncpy(np->name, username, USERNAME_SIZE);
-    
+
     if (np->status != NULL) {
         strcpy(np->status, "activo");
     }
@@ -143,7 +143,33 @@ void client_handler(void *p_client) {
                 send_users_list(np);
                 break;
             case 3: // Change user status
-                                
+                strcpy(np->status, petition->change->status);
+
+                // Create a server response
+                Chat__ChangeStatus changeStatusResponse = CHAT__CHANGE_STATUS__INIT;
+                changeStatusResponse.username = np->name;
+                changeStatusResponse.status = np->status;
+
+                Chat__ServerResponse serverResponse = CHAT__SERVER_RESPONSE__INIT;
+                serverResponse.option = 3;
+                serverResponse.change = &changeStatusResponse;
+
+                size_t len = chat__server_response__get_packed_size(&serverResponse);
+                void *buffer = malloc(len);
+                if (buffer == NULL) {
+                    printf("Error assigning memory\n");
+                    break;
+                }
+                chat__server_response__pack(&serverResponse, buffer);
+
+                // Send the server response to the client
+                send(np->data, buffer, len, 0);
+
+                printf("%s changed status to %s\n", np->name, np->status);
+
+                // Free the buffer
+                free(buffer);
+
                 break;
             case 4: // Chatroom message
                 int leave_flag = 0;
@@ -197,8 +223,8 @@ void client_handler(void *p_client) {
                     // Loop with the new petition
                 }
                 break;  // End of case 4
-                default:
-                    break;
+            default:
+                break;
         }
     }
     // Remove Node
