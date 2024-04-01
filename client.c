@@ -243,6 +243,7 @@ void user_info(int sockfd) {
         printf("User info:\n");
         printf("- Username: %s\n", srv_res->userinforesponse->username);
         printf("- Status: %s\n", srv_res->userinforesponse->status);
+        printf("- IP: %s\n", srv_res->userinforesponse->ip);
     }
 
     chat__server_response__free_unpacked(srv_res, NULL);
@@ -365,7 +366,9 @@ int main(int argc, char *argv[]) {
 
     // Show menu
     while (1) {
+        char input[100];
         int option = 0;
+
         printf("1. Join Chatroom\n");
         printf("2. Private Chat\n");
         printf("3. Change Status\n");
@@ -373,9 +376,15 @@ int main(int argc, char *argv[]) {
         printf("5. Show User Info\n");
         printf("6. Help\n");
         printf("7. Exit\n");
+        
+        // Get user input
+        fgets(input, sizeof(input), stdin);
 
-        // Get user option
-        scanf("%d", &option);
+        // Try to parse the input as an integer
+        if (sscanf(input, "%d", &option) != 1) {
+            // If the parsing fails, treat it as a default case
+            option = -1;
+        }
 
         switch (option) {
             case 1: // Join Chatroom
@@ -490,6 +499,8 @@ int main(int argc, char *argv[]) {
             case 5:
                 // Show User Info
                 user_info(sockfd);
+                // Clean the las '\n'
+                getchar();
                 break;
             case 6:
                 // Help

@@ -345,6 +345,7 @@ void client_handler(void *p_client) {
 
                 userInfoResponse.username = tmp->name;
                 userInfoResponse.status = tmp->status;
+                userInfoResponse.ip = tmp->ip;
 
                 // If not found, send an error message
                 if (tmp == NULL) {
@@ -469,6 +470,11 @@ int main(int argc, char *argv[]) {
 
         // Append linked list for clients
         ClientList *c = newNode(client_sockfd, inet_ntoa(client_info.sin_addr));
+
+        // Set the node ip
+        strncpy(c->ip, inet_ntoa(client_info.sin_addr), 16);
+
+        // Insert in the linked list
         c->prev = now;
         now->link = c;
         now = c;
