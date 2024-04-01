@@ -112,7 +112,6 @@ void send_users_list(ClientList *np) {
     // Free the users array
     free(users);
 
-    printf("Sent user list to %s\n", np->name);
 }
 
 
