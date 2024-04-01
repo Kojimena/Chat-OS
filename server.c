@@ -152,6 +152,12 @@ void client_handler(void *p_client) {
             break;
         }
 
+        // Update the last connection time
+        np->last_connection = clock();
+        if (strcmp(np->status, "inactivo") == 0) {
+            strcpy(np->status, "activo");
+        }
+
         switch (petition->option) {
             case 1: // New User ?
                 break;
@@ -194,6 +200,15 @@ void client_handler(void *p_client) {
             case 4: // Messaging (chatroom or private chat)
                 int leave_flag = 0;
                 while (!leave_flag) {  // Chat loop
+                    //update the last connection time
+                    if (strcmp(petition->messagecommunication->sender, np->name) == 0) {
+                        np->last_connection = clock();
+                        if (strcmp(np->status, "inactivo") == 0) {
+                            strcpy(np->status, "activo");
+                        }
+
+                    }
+
                     // Check if the message is 'exit'
                     if (strcmp(petition->messagecommunication->message, "exit") == 0) {
                         leave_flag = 1;
@@ -360,6 +375,25 @@ void client_handler(void *p_client) {
     }
 }
 
+
+/**
+ * Handles the inactivity of the client, after 60 seconds of inactivity, the client's status is set to 'inactivo'
+ * @param p_client
+ */
+void client_inactivity(void *p_client) {
+    ClientList *np = (ClientList *) p_client;
+    while (1) {
+        if ((strcmp(np->status, "inactivo") != 0) && ((clock() - np->last_connection) / CLOCKS_PER_SEC > INACTIVITY_TIME)) {
+            pthread_mutex_lock(&mutex_status_change);
+
+            strcpy(np->status, "inactivo");
+
+            printf("%s changed status to %s due to inactivity.\n", np->name, np->status);
+            pthread_mutex_unlock(&mutex_status_change);
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
     // Create the server with console args
     if (argc < 2) {
@@ -425,6 +459,12 @@ int main(int argc, char *argv[]) {
 
         pthread_t id;
         if (pthread_create(&id, NULL, (void *) client_handler, (void *) c) != 0) {
+            perror("Create pthread error!\n");
+            exit(EXIT_FAILURE);
+        }
+
+        pthread_t inactivity_id;
+        if (pthread_create(&inactivity_id, NULL, (void *) client_inactivity, (void *) c) != 0) {
             perror("Create pthread error!\n");
             exit(EXIT_FAILURE);
         }

@@ -11,4 +11,6 @@
 
 #define MAX_CLIENTS 3
 
+#define INACTIVITY_TIME 20  // In seconds
+
 #endif // PROTO
