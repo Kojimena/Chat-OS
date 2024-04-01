@@ -493,17 +493,19 @@ int main(int argc, char *argv[]) {
                 break;
             case 6:
                 // Help
+                printf("\n=============================================================================\n");
                 printf("Este chat permite a los usuarios conectarse a un servidor de chat y enviar mensajes a otros usuarios.\n");
                 printf("Las opciones disponibles son:\n");
                 printf("1. Chat with all users: Permite enviar mensajes a todos los usuarios conectados al servidor.\n");
                 printf("-\t Para salir del chat, escriba 'exit'.\n");
                 printf("2. Private Chat: Permite enviar mensajes privados a un usuario específico.\n");
-                pritf("-\t Para salir del chat, escriba 'exit'.\n");
+                printf("-\t Para salir del chat, escriba 'exit'.\n");
                 printf("3. Change Status: Permite cambiar el estado del usuario (activo, inactivo, ocupado).\n");
                 printf("4. List Connected Users: Muestra la lista de usuarios conectados al servidor.\n");
                 printf("5. Show User Info: Muestra la información de un usuario específico.\n");
                 printf("6. Help: Muestra la lista de opciones disponibles.\n");
                 printf("7. Exit: Sale del chat.\n");
+                printf("\n=============================================================================\n");
                 break;
             case 7: // Exit
                 printf("Exiting...\n");
