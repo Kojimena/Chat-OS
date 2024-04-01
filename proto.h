@@ -5,7 +5,7 @@
 #define LENGTH_MSG 101
 #define LENGTH_SEND 201
 
-#define BUFF_SIZE 100
+#define BUFF_SIZE 1024
 
 #define USERNAME_SIZE 100
 

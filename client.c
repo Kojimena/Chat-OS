@@ -75,66 +75,6 @@ void recv_msg_handler() {
     pthread_exit(0);
 }
 
-/**
- * Handles the sending of messages to the server. Sends a message in the protocol format. chat__client_petition
- */
-// void send_msg_handler() {
-//     char message[LENGTH_MSG] = {};  // Buffer to store the message
-
-//     // Detach the current thread
-//     pthread_detach(pthread_self());
-
-//     while (!exit_flag) {
-//         str_overwrite_stdout();
-//         while (fgets(message, LENGTH_MSG, stdin) != NULL) { // Read the message
-//             str_trim_lf(message, LENGTH_MSG);  // Remove \n
-//             if (strlen(message) == 0) { // If the message is empty
-//                 str_overwrite_stdout();
-//             } else {    // Proceed to send the message
-//                 break;
-//             }
-//         }
-
-//         // Pack the message
-//         Chat__MessageCommunication msgComm = CHAT__MESSAGE_COMMUNICATION__INIT;
-//         msgComm.message = message;
-//         msgComm.recipient = "everyone";
-//         msgComm.sender = username;
-
-//         Chat__ClientPetition petition = CHAT__CLIENT_PETITION__INIT;
-//         petition.option = 4;
-//         petition.messagecommunication = &msgComm;
-
-//         size_t len = chat__client_petition__get_packed_size(&petition);
-//         void *buffer = malloc(len);
-//         if (buffer == NULL) {
-//             printf("Error assigning memory\n");
-//             break;
-//         }
-//         chat__client_petition__pack(&petition, buffer);
-
-//         // Send the message. If it wants to leave the chatroom, notify the server by sending "exit"
-//         if (send(sockfd, buffer, len, 0) < 0) {
-//             printf("Error sending the message to the server\n");
-//             break;
-//         }
-
-//         // If the message is "exit", leave the chatroom client side
-//         if (strcmp(message, "exit") == 0) {
-//             printf("Leaving chatroom\n");
-//             exit_flag = 1;  // Set the flag to signal threads to exit
-//             pthread_exit(0);  // Terminate the current thread
-//         }
-
-//         // Free the buffer
-//         free(buffer);
-//         if (exit_flag) {
-//             break;
-//         }
-//     }
-//     pthread_exit(0);
-// }
-
 
 void change_status() {
     int option = 1;
@@ -227,7 +167,6 @@ void receive_users_list(int sockfd) {
                    srv_res->connectedusers->connectedusers[i]->status);
         }
     }
-
     chat__server_response__free_unpacked(srv_res, NULL);
 }
 
@@ -254,6 +193,7 @@ void list_connected_users(int sockfd) {
     }
 
     free(buf);
+
     receive_users_list(sockfd);
 }
 
@@ -483,6 +423,9 @@ int main(int argc, char *argv[]) {
                 pthread_cancel(send_msg_thread);
                 pthread_cancel(recv_msg_thread);
 
+                // Free the buffer
+                free(buffer);
+
                 break;
             case 2: // Private Chat
                 // Get the username to chat with
@@ -533,6 +476,9 @@ int main(int argc, char *argv[]) {
 
                 pthread_cancel(send_msg_thread_dm);
                 pthread_cancel(recv_msg_thread_dm);
+
+                // Free the buffer
+                free(buffer_dm);
 
                 break;
             case 3: // Change Status

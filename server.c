@@ -95,10 +95,21 @@ void send_users_list(ClientList *np) {
     chat__server_response__pack(&srv_res, buf);
 
     // Send the server response
-    send(np->data, buf, len, 0);
+    if (send(np->data, buf, len, 0) == -1) {
+        printf("Error sending user list to %s\n", np->name);
+    } else {
+        printf("Sent user list to %s\n", np->name);
+    }
 
     // Free the buffer
     free(buf);
+
+    // Free each Chat__UserInfo object
+    for (int i = 0; i < j; i++) {
+        free(users[i]);
+    }
+
+    // Free the users array
     free(users);
 
     printf("Sent user list to %s\n", np->name);
@@ -309,8 +320,12 @@ void client_handler(void *p_client) {
                             break;
                         }
                     }
+                    // Free buffer          
+                    free(buffer);
+
                     // Loop with the new petition
                 }
+
                 break;  // End of case 4
             case 5: // Get user info
                 pthread_mutex_lock(&mutex_user_info);
@@ -362,6 +377,8 @@ void client_handler(void *p_client) {
             default:
                 break;
         }
+        // Free the petition
+        chat__client_petition__free_unpacked(petition, NULL);
     }
     // Remove Node
     close(np->data);  // Close the socket
