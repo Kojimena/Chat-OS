@@ -133,16 +133,9 @@ void client_handler(void *p_client) {
     char recv_buffer[LENGTH_MSG] = {};
     ClientList *np = (ClientList *) p_client;
 
-    // Receive the username
-    recv(np->data, username, USERNAME_SIZE, 0);
-    // Set the username
-    strncpy(np->name, username, USERNAME_SIZE);
-
     if (np->status != NULL) {
         strcpy(np->status, "activo");
     }
-
-    printf("Username: %s\n", np->name);
 
     // Petition loop
     while (1) {
@@ -156,8 +149,6 @@ void client_handler(void *p_client) {
             break;
         }
 
-        printf("Received petition from %s\n", np->name);
-
         // Unpack the received petition
         Chat__ClientPetition *petition = chat__client_petition__unpack(NULL, receive, recv_buffer);
         if (petition == NULL) {
@@ -170,10 +161,14 @@ void client_handler(void *p_client) {
         if (strcmp(np->status, "inactivo") == 0) {
             strcpy(np->status, "activo");
         }
+        printf("Petition option: %d\n", petition->option);
 
         switch (petition->option) {
             case 1: // New User ?
-                printf("Attempting to create new user: %s\n", np->name);
+                printf("Attempting to create new user: %s\n", petition->registration->username);
+                // Set the username
+                strncpy(np->name, petition->registration->username, USERNAME_SIZE);
+
                 // Send a server response
                 Chat__ServerResponse response = CHAT__SERVER_RESPONSE__INIT;
                 response.option = 1;

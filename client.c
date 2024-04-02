@@ -361,9 +361,6 @@ int main(int argc, char *argv[]) {
     printf("SUCCESS: Connected to %s:%d !\n", inet_ntoa(server_info.sin_addr), ntohs(server_info.sin_port));
     printf("You are: %s:%d\n", inet_ntoa(client_info.sin_addr), ntohs(client_info.sin_port));
 
-    // Send username to server
-    send(sockfd, username, USERNAME_SIZE, 0);
-
     // Create a User Register petition
     Chat__UserRegistration user_register = CHAT__USER_REGISTRATION__INIT;
     user_register.username = username;
