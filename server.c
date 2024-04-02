@@ -142,6 +142,8 @@ void client_handler(void *p_client) {
         strcpy(np->status, "activo");
     }
 
+    printf("Username: %s\n", np->name);
+
     // Petition loop
     while (1) {
         // Wait for a petition
@@ -150,6 +152,7 @@ void client_handler(void *p_client) {
             printf("ERROR RECEIVING PETITION (loop)\n");
             break;
         } else if (receive == 0) {  // Client disconnected
+            printf("Client disconnected\n");
             break;
         }
 
@@ -170,6 +173,47 @@ void client_handler(void *p_client) {
 
         switch (petition->option) {
             case 1: // New User ?
+                printf("Attempting to create new user: %s\n", np->name);
+                // Send a server response
+                Chat__ServerResponse response = CHAT__SERVER_RESPONSE__INIT;
+                response.option = 1;
+                response.code = 200;
+
+                // Check if the username is already taken
+                // The user_register should be 1 if not repeated
+                int users_registered = 0;
+                ClientList *new_tmp = root->link;
+                while (new_tmp != NULL) {
+                    if (strcmp(new_tmp->name, np->name) == 0) {
+                        users_registered += 1;
+                    }
+                    new_tmp = new_tmp->link;
+                }
+
+                if (users_registered > 1) {
+                    response.code = 500;
+                }
+
+                // Send the response
+                size_t new_len = chat__server_response__get_packed_size(&response);
+                void *new_buffer = malloc(new_len);
+                if (new_buffer == NULL) {
+                    printf("Error assigning memory\n");
+                    break;
+                }
+
+                chat__server_response__pack(&response, new_buffer);
+                send(np->data, new_buffer, new_len, 0);
+
+                // Free the buffer
+                free(new_buffer);
+
+                if(response.code == 200) {
+                    printf("User %s created\n", np->name);
+                } else {
+                    printf("User %s already exists\n", np->name);
+                }
+
                 break;
             case 2: // Get users list
                 pthread_mutex_lock(&mutex_listInfo);
@@ -225,8 +269,8 @@ void client_handler(void *p_client) {
                         break;
                     }
 
-                    if(strcmp(petition->messagecommunication->recipient, "everyone") == 0) {
-                            // Create a server response
+                    if (strcmp(petition->messagecommunication->recipient, "everyone") == 0) {
+                        // Create a server response
                         Chat__MessageCommunication msgCommSend = CHAT__MESSAGE_COMMUNICATION__INIT;
                         msgCommSend.sender = petition->messagecommunication->sender;
                         msgCommSend.recipient = petition->messagecommunication->recipient;
@@ -252,7 +296,7 @@ void client_handler(void *p_client) {
                         free(buffer);
 
                         printf("%s sent in chatroom: %s\n", petition->messagecommunication->sender,
-                            petition->messagecommunication->message);
+                               petition->messagecommunication->message);
 
                         // Receive the next petition
                         receive = recv(np->data, recv_buffer, LENGTH_MSG, 0);
@@ -400,7 +444,8 @@ void client_handler(void *p_client) {
 void client_inactivity(void *p_client) {
     ClientList *np = (ClientList *) p_client;
     while (1) {
-        if ((strcmp(np->status, "inactivo") != 0) && ((clock() - np->last_connection) / CLOCKS_PER_SEC > INACTIVITY_TIME)) {
+        if ((strcmp(np->status, "inactivo") != 0) &&
+            ((clock() - np->last_connection) / CLOCKS_PER_SEC > INACTIVITY_TIME)) {
             pthread_mutex_lock(&mutex_status_change);
 
             strcpy(np->status, "inactivo");

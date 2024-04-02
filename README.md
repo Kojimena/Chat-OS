@@ -26,11 +26,11 @@ Para compilar el servidor, ejecutar el siguiente comando:
   - ```gcc server.c sistos.pb-c.c -o server.o -lprotobuf-c```
 
 En caso de ser necesario, reemplazar:
-- ```server.c``` al nombre del archivo con el codigo del servidor.
+- ```server.c``` al nombre del archivo con el código del servidor.
 - ```sistos.pb-c.c``` al nombre del archivo compilado con [proto](#instalación-proto).
 - ```server.o``` por el nombre del archivo de salida al momento de compilar
 
-Notese que se indica el uso del parametro ```-lprotobuf-c``` de manera obligatoria.
+Notese que se indica el uso del parámetro ```-lprotobuf-c``` de manera obligatoria.
 
 
 #### Ejecutar el Servidor
@@ -42,24 +42,26 @@ Donde ```<nombredelservidor>``` es el nombre del programa y ```<puertodelservido
 #### Compilar el Cliente
 Para compilar el cliente, ejecutar el siguiente comando:
 
-```gcc cliente.c sistos.pb-c.c -o client.o -lprotobuf-c```
+- ```gcc cliente.c sistos.pb-c.c -o client.o -lprotobuf-c```
     
 En caso de ser necesario, reemplazar:
 - ```cliente.c``` al nombre del archivo con el código del cliente.
 - ```sistos.pb-c.c``` al nombre del archivo compilado con [proto](#instalación-proto).
-- ```cliente.o``` por el nombre del archivo de salida al momento de 
+- ```cliente.o``` por el nombre del archivo de salida al momento de compilar.
+
+Notese que se indica el uso del parametro ```-lprotobuf-c``` de manera obligatoria.
 
 #### Ejecutar el Cliente
 
 
-    - ``` <nombredelcliente> <nombredeusuario> <IPdelservidor> <puertodelservidor>```
+ ``` <nombredelcliente> <nombredeusuario> <IPdelservidor> <puertodelservidor>```
     
 
-    Donde ```<nombredelcliente>``` es el nombre del programa. ```<IPdelservidor>``` y
+  Donde ```<nombredelcliente>``` es el nombre del programa. ```<IPdelservidor>``` y
     ```<puertodelservidor>``` serán a donde debe llegar la solicitud de conexión del cliente según la
     configuración del servidor.
 
-    En el cliente se permite elegir entre las siguientes opciones.
+  En el cliente se permite elegir entre las siguientes opciones.
     
     1. Chatear con todos los usuarios (broadcasting).
     2. Enviar y recibir mensajes directos, privados, aparte del chat general.

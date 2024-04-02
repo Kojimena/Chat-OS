@@ -51,7 +51,7 @@ void recv_msg_handler() {
         }
 
         // Print the message
-        if(serverResponse->code == 200) {
+        if (serverResponse->code == 200) {
             // If the message is public, print on default color
             if (strcmp(serverResponse->messagecommunication->recipient, "everyone") == 0) {
                 printf("\r%s | %s\n", serverResponse->messagecommunication->sender,
@@ -364,6 +364,50 @@ int main(int argc, char *argv[]) {
     // Send username to server
     send(sockfd, username, USERNAME_SIZE, 0);
 
+    // Create a User Register petition
+    Chat__UserRegistration user_register = CHAT__USER_REGISTRATION__INIT;
+    user_register.username = username;
+    user_register.ip = inet_ntoa(client_info.sin_addr);
+
+    Chat__ClientPetition new_client_petition = CHAT__CLIENT_PETITION__INIT;
+    new_client_petition.option = 1;
+    new_client_petition.registration = &user_register;
+
+    size_t new_len = chat__client_petition__get_packed_size(&new_client_petition);
+
+    void *new_buffer = malloc(new_len);
+    if (new_buffer == NULL) {
+        printf("Error assigning memory\n");
+        return EXIT_FAILURE;
+    }
+    chat__client_petition__pack(&new_client_petition, new_buffer);
+
+    // Send the petition
+    if (send(sockfd, new_buffer, new_len, 0) < 0) {
+        printf("Error sending the petition to the server\n");
+        return EXIT_FAILURE;
+    }
+
+    // Receive the server response
+    char new_recvBuff[BUFF_SIZE];
+    int new_n = recv(sockfd, new_recvBuff, BUFF_SIZE, 0);
+    if (new_n == -1) {
+        perror("Recv failed");
+        exit(EXIT_FAILURE);
+    }
+
+
+    Chat__ServerResponse *new_srv_res = chat__server_response__unpack(NULL, new_n, new_recvBuff);
+    if (new_srv_res == NULL) {
+        fprintf(stderr, "Error unpacking incoming message\n");
+        exit(1);
+    }
+
+    if (new_srv_res->code != 200) {
+        printf("Error connecting to the server. Username %s already exists.\n", username);
+        exit(EXIT_FAILURE);
+    }
+
     // Show menu
     while (1) {
         char input[100];
@@ -376,7 +420,7 @@ int main(int argc, char *argv[]) {
         printf("5. Show User Info\n");
         printf("6. Help\n");
         printf("7. Exit\n");
-        
+
         // Get user input
         fgets(input, sizeof(input), stdin);
 
