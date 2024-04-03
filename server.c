@@ -168,6 +168,8 @@ void client_handler(void *p_client) {
                 printf("Attempting to create new user: %s\n", petition->registration->username);
                 // Set the username
                 strncpy(np->name, petition->registration->username, USERNAME_SIZE);
+                strncpy(np->status, "activo", strlen("activo") + 1);
+
 
                 // Send a server response
                 Chat__ServerResponse response = CHAT__SERVER_RESPONSE__INIT;
@@ -205,6 +207,7 @@ void client_handler(void *p_client) {
 
                 if(response.code == 200) {
                     printf("User %s created\n", np->name);
+                    printf("%s", np->status);
                 } else {
                     printf("User %s already exists\n", np->name);
                 }
@@ -513,6 +516,9 @@ int main(int argc, char *argv[]) {
 
         // Set the node ip
         strncpy(c->ip, inet_ntoa(client_info.sin_addr), 16);
+
+        // Set the status of the client
+        strncpy(c->status, "activo", strlen("activo") + 1);
 
         // Insert in the linked list
         c->prev = now;
