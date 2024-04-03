@@ -533,6 +533,8 @@ int main(int argc, char *argv[]) {
                 break;
             case 3: // Change Status
                 change_status();
+                // Clean the las '\n'
+                getchar();
                 break;
             case 4: // List Connected Users
                 list_connected_users(sockfd);
